@@ -1,9 +1,9 @@
 # RT-001: Determinism check red-team pass
 
-Status: Draft
-Date: 2026-04-29
+Status: Living document -- 3 of 5 findings closed
+Date: 2026-04-29 (initial), 2026-04-29 (last updated)
 Scope: src/praxis/checks/determinism.py and src/praxis/checks/_rollout.py
-Reviewed commits: 489a592..0dbd655
+Reviewed commits: 489a592..126857f
 
 ## Threat model
 
@@ -43,6 +43,25 @@ Net: the attacker has total control over the env package and total control over
 which (seed, n_steps, action_policy) tuples the determinism check will exercise.
 The check only verifies that the env behaves as the manifest claims on the seeds
 the manifest itself nominated.
+
+## Closed findings summary
+
+Three of five findings have been closed. F-005 (no anchor n_steps invariant) is
+fully closed by a manifest-time model_validator. F-001 (anchor cherry-picking)
+is closed by a new check_determinism_self_consistency that runs at
+validator-derived seeds; the previous "creator picks the entire test
+distribution" gap is gone. F-004 (info side channel) is closed as a toggle:
+DeterminismConfig.hash_infos defaults False (backward compatible) but flips
+True for paranoid-mode audits. PoC adversarial envs covering F-001 and F-004
+live in tests/checks/_adversarial_envs.py.
+
+Two findings remain. F-002 (canonical SEEDED_RANDOM action sequence is fully
+public per seed) and F-003 (importlib runs creator-controlled top-level code
+without a sandbox) are both HIGH severity but require Phase 2 architectural
+work: chain-beacon entropy for F-002 to make derived seeds unpredictable per
+validation epoch, and process isolation / module allow-listing for F-003.
+Both are deferred to a consolidated red-team pass after step 8 (solver
+baseline) lands; RT-001 will be cross-referenced from that pass.
 
 ## Attack catalog
 
@@ -85,6 +104,18 @@ the manifest itself nominated.
   "does the env match the creator's claim on creator-picked seeds?" to "is
   the env self-consistent on validator-picked seeds?" -- they are different
   guarantees.
+- **Resolution**:
+  - Status: CLOSED
+  - Resolved by: 126857f (feat(checks): self-consistency determinism + hash_infos config)
+  - Mechanism: check_determinism_self_consistency runs the env twice at
+    validator-derived seeds (salt=b"determinism_self_consistency") and
+    asserts trajectory hash equality. Anchor cherry-picking no longer
+    suffices since the validator now exercises seeds the creator did
+    not declare.
+  - Residual gap: F-002 still applies. Validator seeds are derivable from
+    the manifest; a creator can in principle brute-force a manifest whose
+    derived seeds plus the public canonical action sequence at each are
+    all lying-friendly. Phase 2 chain-beacon fix.
 
 ### A-002: Walltime / wallclock side-channel non-determinism
 - Category: hidden non-determinism the trajectory hash misses
@@ -121,6 +152,19 @@ the manifest itself nominated.
   by default after publishing a list of allowed keys. Alternatively, document
   that info is forensically untrusted and require all reward-bearing claims to
   be observable through obs/reward/term/trunc only.
+- **Resolution**:
+  - Status: CLOSED (as toggle)
+  - Resolved by: 126857f
+  - Mechanism: DeterminismConfig grows hash_infos: bool = False. When True,
+    info dicts from each step are folded into the trajectory hash via
+    protocol.hashing.trajectory_hash include_infos parameter. Both
+    check_determinism (anchor) and check_determinism_self_consistency
+    respect the flag.
+  - Residual gap: paranoid mode is opt-in; default validator runs with
+    hash_infos=False. Documented as a design choice. Envs that legitimately
+    use info for non-essential channels would fail under hash_infos=True,
+    so the protocol cannot make True the default without a separate spec
+    requiring deterministic info dicts.
 
 ### A-003: Anchor-policy lock-in (env honest only on the canonical action sequence)
 - Category: action policy
@@ -162,6 +206,13 @@ the manifest itself nominated.
   terminations consistent). Determinism cannot get a hash match here -- the
   trajectory is unknown to the manifest -- but the env must not crash or emit
   out-of-space obs. That alone defeats the cheapest forms of A-003.
+- **Resolution**:
+  - Status: DEFERRED (Phase 2)
+  - Reason: defeating canonical-action lookup requires unpredictable seeds
+    per validation epoch (chain-beacon entropy or commit-reveal), which is
+    architectural work beyond Phase 1 scope.
+  - Re-evaluation: consolidated red-team pass scheduled after step 8
+    (solver baseline) lands. RT-001 cross-referenced from that pass.
 
 ### A-004: Float repr platform-sensitivity (cross-validator hash divergence)
 - Category: hash forgery / float repr canonical_bytes attack
@@ -266,6 +317,13 @@ the manifest itself nominated.
   code. Snapshot `sys.modules` keys before import and assert no praxis or
   numpy entry was overwritten when the env is closed. Until that is in place,
   document explicitly that env code is trusted as much as validator code.
+- **Resolution**:
+  - Status: DEFERRED (Phase 2)
+  - Reason: defeating importlib side effects requires process isolation
+    or a module allow-list with a sandbox boundary; substantial
+    infrastructure work outside Phase 1's scope.
+  - Re-evaluation: consolidated red-team pass scheduled after step 8
+    (solver baseline) lands. RT-001 cross-referenced from that pass.
 
 ### A-007: TimeLimit / internal-step-counter disagreement
 - Category: validator logic bypass / TimeLimit
@@ -320,6 +378,18 @@ the manifest itself nominated.
   i.e. if truncation was the only reason the rollout did not reach
   `n_steps`. That is a different check ("n_steps requested == n_steps
   produced unless natural termination") but is cheap and informative.
+- **Resolution**:
+  - Status: CLOSED
+  - Resolved by: 14f9886 (fix(protocol): enforce anchor.n_steps <= max_episode_steps invariant)
+  - Mechanism: New _anchor_steps_must_fit_episode_budget model_validator
+    on EnvManifest. Manifests where any anchor's n_steps exceeds the
+    manifest's max_episode_steps now fail Pydantic validation at parse
+    time, before the validator ever loads the env.
+  - Residual gap: none. The case-A "env truncates first because its
+    internal counter is shorter than the TimeLimit budget" is intentional
+    flexibility (the env is allowed to truncate inside the wrapper) and
+    is not a forgery vector by itself; it surfaces only as a behavior
+    consistency question for downstream checks.
 
 ### A-008: Numpy obs-array dtype canonicalization gap
 - Category: float repr / canonical_bytes attack
@@ -455,10 +525,10 @@ because they either require capabilities outside the threat model (A-004) or
 collapse onto a HIGH attack (A-005, A-010) or are out-of-scope-for-determinism
 concerns (A-008, A-009).
 
-| F-NNN | severity | one-line summary | linked attack |
-|---|---|---|---|
-| F-001 | HIGH | Determinism never spot-checks a validator-chosen seed; creator picks the entire test distribution. | A-001 |
-| F-002 | HIGH | Canonical action sequence is fully public per seed; env can lie on every off-canonical (seed, action) pair. | A-003 |
-| F-003 | HIGH | `import_module(entry_point)` runs creator-controlled top-level code with no sandbox; can monkey-patch validator internals. | A-006 |
-| F-004 | MEDIUM | `info` dicts are excluded from the trajectory hash; walltime / pid / hostname leak through invisibly. | A-002 |
-| F-005 | MEDIUM | No invariant `anchor.n_steps <= manifest.max_episode_steps`; env's internal step counter can also disagree with TimeLimit. | A-007 |
+| F-NNN | severity | status | one-line summary | resolving commit |
+|---|---|---|---|---|
+| F-002 | HIGH | DEFERRED | Canonical SEEDED_RANDOM action sequence fully public per seed; env can lie on every off-canonical (seed, action) pair. | DEFERRED |
+| F-003 | HIGH | DEFERRED | importlib(entry_point) runs creator-controlled top-level code without a sandbox. | DEFERRED |
+| F-001 | HIGH | CLOSED | Validator only tested creator-declared seeds; anchor cherry-picking trivially passes determinism. | 126857f |
+| F-004 | MEDIUM | CLOSED (toggle) | Infos excluded from trajectory hash by default; walltime/pid leak invisibly through info dicts. | 126857f |
+| F-005 | MEDIUM | CLOSED | No anchor n_steps invariant; manifests can declare unfittable anchors. | 14f9886 |
