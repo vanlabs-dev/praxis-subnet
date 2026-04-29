@@ -170,6 +170,50 @@ class CrashOnStep(_BaseTinyEnv):
         raise RuntimeError("intentional crash in step")
 
 
+class LazyEnv(_BaseTinyEnv):
+    """Always returns reward=-1, never terminates naturally.
+
+    Q-learning has nothing useful to learn from. Demonstrates the solver
+    baseline check rejecting envs that are 'harder than declared.'
+    """
+
+    observation_space = gym.spaces.Box(low=0, high=0, shape=(2,), dtype=np.int32)  # type: ignore[assignment]
+    action_space = gym.spaces.Discrete(4)  # type: ignore[assignment]
+
+    def reset(  # type: ignore[override]
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[Any, dict[str, Any]]:
+        super().reset(seed=seed)
+        return np.array([0, 0], dtype=np.int32), {}
+
+    def step(  # type: ignore[override]
+        self, action: int
+    ) -> tuple[Any, float, bool, bool, dict[str, Any]]:
+        return np.array([0, 0], dtype=np.int32), -1.0, False, False, {}
+
+
+class TrivialEnv(_BaseTinyEnv):
+    """Always returns reward=+1 on the first step and terminates.
+
+    Random policy crushes it. Demonstrates the trivial_random_warning
+    surfacing when an env declared as HARD is actually trivial.
+    """
+
+    observation_space = gym.spaces.Box(low=0, high=1, shape=(1,), dtype=np.int32)  # type: ignore[assignment]
+    action_space = gym.spaces.Discrete(2)  # type: ignore[assignment]
+
+    def reset(  # type: ignore[override]
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[Any, dict[str, Any]]:
+        super().reset(seed=seed)
+        return np.array([0], dtype=np.int32), {}
+
+    def step(  # type: ignore[override]
+        self, action: int
+    ) -> tuple[Any, float, bool, bool, dict[str, Any]]:
+        return np.array([1], dtype=np.int32), 1.0, True, False, {}
+
+
 class NondeterministicReward(_BaseTinyEnv):
     """Adversarial: reward = base + small uniform noise via numpy global RNG.
 

@@ -18,9 +18,11 @@ import numpy.typing as npt
 from gymnasium.wrappers import TimeLimit
 
 from praxis.protocol import ActionPolicyId
+from praxis.protocol.manifest import EnvManifest
 
 __all__ = [
     "EnvSpec",
+    "spec_from_manifest",
     "StepRecord",
     "iter_rollout",
     "ActionPolicy",
@@ -96,6 +98,19 @@ def _load_env(spec: EnvSpec) -> gym.Env[Any, Any]:
         )
     env = env_cls(**spec.kwargs)
     return TimeLimit(env, max_episode_steps=spec.max_episode_steps)
+
+
+def spec_from_manifest(manifest: EnvManifest) -> EnvSpec:
+    """Build an EnvSpec from the env-defining fields of a manifest.
+
+    Defensive-copies kwargs so two callers building specs from the same
+    manifest don't share a mutable dict reference.
+    """
+    return EnvSpec(
+        entry_point=manifest.entry_point,
+        kwargs=dict(manifest.kwargs),
+        max_episode_steps=manifest.max_episode_steps,
+    )
 
 
 # ---------------------------------------------------------------------------

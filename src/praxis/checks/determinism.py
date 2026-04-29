@@ -31,6 +31,7 @@ from praxis.checks._rollout import (
     EnvSpec,
     SeededRandomPolicy,
     iter_rollout,
+    spec_from_manifest,
 )
 from praxis.checks._seeds import derive_validator_seeds
 from praxis.protocol import ActionPolicyId, EnvManifest, trajectory_hash
@@ -282,11 +283,7 @@ def check_determinism(
         Strict pass/fail result with per-anchor diagnostics.
     """
     cfg = config if config is not None else DeterminismConfig()
-    env_spec = EnvSpec(
-        entry_point=manifest.entry_point,
-        kwargs=dict(manifest.kwargs),
-        max_episode_steps=manifest.max_episode_steps,
-    )
+    env_spec = spec_from_manifest(manifest)
 
     anchor_results: list[AnchorResult] = []
 
@@ -404,11 +401,7 @@ def check_determinism_self_consistency(
         Strict pass/fail result with per-seed pair diagnostics.
     """
     cfg = config if config is not None else DeterminismConfig()
-    spec = EnvSpec(
-        entry_point=manifest.entry_point,
-        kwargs=dict(manifest.kwargs),
-        max_episode_steps=manifest.max_episode_steps,
-    )
+    spec = spec_from_manifest(manifest)
     seeds: tuple[int, ...] = (
         cfg.override_seeds
         if cfg.override_seeds is not None

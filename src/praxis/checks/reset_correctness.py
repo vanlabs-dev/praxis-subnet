@@ -13,7 +13,7 @@ from typing import Any
 import numpy as np
 from pydantic import BaseModel
 
-from praxis.checks._rollout import POLICY_REGISTRY, ActionPolicy, EnvSpec, _load_env
+from praxis.checks._rollout import POLICY_REGISTRY, ActionPolicy, _load_env, spec_from_manifest
 from praxis.checks._seeds import derive_validator_seeds
 from praxis.protocol import ActionPolicyId, EnvManifest
 
@@ -194,11 +194,7 @@ def check_reset_correctness(
         Structured report with pass/fail status and full violation details.
     """
     cfg = config if config is not None else ResetCorrectnessConfig()
-    spec = EnvSpec(
-        entry_point=manifest.entry_point,
-        kwargs=dict(manifest.kwargs),
-        max_episode_steps=manifest.max_episode_steps,
-    )
+    spec = spec_from_manifest(manifest)
 
     seeds: tuple[int, ...] = (
         cfg.override_seeds

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel
 
-from praxis.checks._rollout import EnvSpec, iter_rollout
+from praxis.checks._rollout import iter_rollout, spec_from_manifest
 from praxis.checks._seeds import derive_validator_seeds
 from praxis.protocol import ActionPolicyId, EnvManifest
 
@@ -241,11 +241,7 @@ def check_reward_bounds(
     )
 
     bounds = manifest.declared_reward_bounds
-    env_spec = EnvSpec(
-        entry_point=manifest.entry_point,
-        kwargs=dict(manifest.kwargs),
-        max_episode_steps=manifest.max_episode_steps,
-    )
+    env_spec = spec_from_manifest(manifest)
 
     step_violations: list[StepViolation] = []
     episode_violations: list[EpisodeViolation] = []
