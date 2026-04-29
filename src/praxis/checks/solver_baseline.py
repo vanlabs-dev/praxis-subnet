@@ -41,6 +41,7 @@ from praxis.checks._rollout import EnvSpec, _load_env, iter_rollout, spec_from_m
 from praxis.checks._seeds import derive_validator_seeds
 from praxis.protocol import ActionPolicyId, DifficultyBand, EnvManifest
 from praxis.protocol.types import SolverId
+from praxis.solver import Solver
 from praxis.solver.registry import SOLVER_REGISTRY
 
 __all__ = [
@@ -313,7 +314,7 @@ def _compute_random_baseline(
 
 def _run_one_solver(
     solver_id: SolverId,
-    solver_instance: object,
+    solver: Solver,
     spec: EnvSpec,
     manifest: EnvManifest,
     band_cfg: BandConfig,
@@ -322,7 +323,7 @@ def _run_one_solver(
     random_baseline_normalized: float,
     per_episode_returns_random: tuple[float, ...],
 ) -> PerSolverResult:
-    """Train solver_instance and evaluate it; return a PerSolverResult.
+    """Train solver and evaluate it; return a PerSolverResult.
 
     The caller must catch NotImplementedError to detect solver incompatibility:
 
@@ -339,9 +340,8 @@ def _run_one_solver(
     ----------
     solver_id:
         SolverId enum value for this solver (written into PerSolverResult).
-    solver_instance:
-        The Solver object from SOLVER_REGISTRY. Typed as object to avoid
-        importing the Protocol; duck-typed via train/evaluate calls.
+    solver:
+        The Solver Protocol instance from SOLVER_REGISTRY.
     spec:
         EnvSpec for loading fresh env instances.
     manifest:
@@ -368,11 +368,6 @@ def _run_one_solver(
     NotImplementedError
         If the solver signals incompatibility with this env via train().
     """
-    from praxis.solver._protocol import Solver  # local to avoid circular-import risk
-
-    # We use duck-typed calls; cast to Solver protocol type for mypy only.
-    typed_solver: Solver = solver_instance  # type: ignore[assignment]
-
     bounds = manifest.declared_reward_bounds
     span = bounds.max_per_episode - bounds.min_per_episode
 
@@ -383,7 +378,7 @@ def _run_one_solver(
     # Train -- NotImplementedError propagates to caller (incompatibility signal).
     env_train = _load_env(spec)
     try:
-        state = typed_solver.train(env_train, train_seed, band_cfg.training_budget)
+        state = solver.train(env_train, train_seed, band_cfg.training_budget)
     finally:
         try:
             env_train.close()
@@ -393,7 +388,7 @@ def _run_one_solver(
     # Evaluate trained policy.
     env_eval = _load_env(spec)
     try:
-        eval_result = typed_solver.evaluate(
+        eval_result = solver.evaluate(
             env_eval, state, eval_seeds[0], band_cfg.eval_episodes
         )
     finally:
@@ -582,11 +577,11 @@ def check_solver_baseline(
     )
 
     solver_results: dict[SolverId, PerSolverResult] = {}
-    for solver_id, solver_instance in SOLVER_REGISTRY.items():
+    for solver_id, solver in SOLVER_REGISTRY.items():
         try:
             per_solver = _run_one_solver(
                 solver_id=solver_id,
-                solver_instance=solver_instance,
+                solver=solver,
                 spec=spec,
                 manifest=manifest,
                 band_cfg=band_cfg,
