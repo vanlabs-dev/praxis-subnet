@@ -23,20 +23,3 @@ for _env_id, _grid_size in _REGISTRATIONS:
             entry_point="praxis.envs.gridworld:PraxisGridworld",
             kwargs={"grid_size": _grid_size},
         )
-
-# Lowercase aliases satisfy the EnvManifest env_id pattern (^[a-z][a-z0-9_-]{2,63}$)
-# while mapping to the same underlying environments. Required for the determinism
-# validator which calls gym.make(manifest.env_id).
-_LOWERCASE_ALIASES: list[tuple[str, int]] = [
-    ("praxisgridworld-easy-v0", 5),
-    ("praxisgridworld-medium-v0", 10),
-    ("praxisgridworld-hard-v0", 20),
-]
-
-for _env_id, _grid_size in _LOWERCASE_ALIASES:
-    if _env_id not in gym.envs.registry:
-        gym.register(
-            id=_env_id,
-            entry_point="praxis.envs.gridworld:PraxisGridworld",
-            kwargs={"grid_size": _grid_size},
-        )

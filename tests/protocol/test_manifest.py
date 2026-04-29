@@ -29,20 +29,22 @@ _BOUNDS = RewardBounds(
 
 def _valid_manifest() -> dict[str, object]:
     return {
-        "protocol_version": "0.1.0",
+        "protocol_version": "0.2.0",
         "env_id": "test-env-v1",
         "entry_point": "praxis.envs.test_env:TestEnv",
         "difficulty_band": DifficultyBand.EASY,
         "max_episode_steps": 500,
         "declared_reward_bounds": _BOUNDS,
         "anchor_trajectories": _ANCHORS,
+        "env_version": "0.1.0",
+        "kwargs": {},
     }
 
 
 def test_valid_manifest_validates() -> None:
     m = EnvManifest(**_valid_manifest())  # type: ignore[arg-type]
     assert m.env_id == "test-env-v1"
-    assert m.protocol_version == "0.1.0"
+    assert m.protocol_version == "0.2.0"
     assert len(m.anchor_trajectories) == 4
 
 
@@ -115,6 +117,8 @@ def test_round_trip_json_preserves_all_fields() -> None:
     for a1, a2 in zip(m.anchor_trajectories, m2.anchor_trajectories):
         assert a1 == a2
     assert m2.creator_metadata == m.creator_metadata
+    assert m2.env_version == m.env_version
+    assert m2.kwargs == m.kwargs
 
 
 def test_reward_bounds_min_ge_max_raises() -> None:
@@ -145,3 +149,48 @@ def test_zero_n_steps_raises() -> None:
             n_steps=0,
             expected_hash=_FAKE_HASH,
         )
+
+
+# --- New tests for env_version ---
+
+
+@pytest.mark.parametrize("version", ["0.1.0", "1.2.3.dev1", "2.0.0a1"])
+def test_env_version_pep440_valid(version: str) -> None:
+    data = _valid_manifest()
+    data["env_version"] = version
+    m = EnvManifest(**data)  # type: ignore[arg-type]
+    assert m.env_version == version
+
+
+def test_env_version_malformed_raises() -> None:
+    data = _valid_manifest()
+    data["env_version"] = "not-a-version"
+    with pytest.raises(ValidationError):
+        EnvManifest(**data)  # type: ignore[arg-type]
+
+
+# --- New tests for kwargs ---
+
+
+def test_kwargs_non_json_serialisable_raises() -> None:
+    data = _valid_manifest()
+    data["kwargs"] = {"x": object()}  # type: ignore[assignment]
+    with pytest.raises(ValidationError, match="JSON-serialisable"):
+        EnvManifest(**data)  # type: ignore[arg-type]
+
+
+# --- New tests for protocol_version ---
+
+
+def test_protocol_version_010_rejected() -> None:
+    data = _valid_manifest()
+    data["protocol_version"] = "0.1.0"
+    with pytest.raises(ValidationError):
+        EnvManifest(**data)  # type: ignore[arg-type]
+
+
+def test_protocol_version_020_required() -> None:
+    data = _valid_manifest()
+    data["protocol_version"] = "0.2.0"
+    m = EnvManifest(**data)  # type: ignore[arg-type]
+    assert m.protocol_version == "0.2.0"
