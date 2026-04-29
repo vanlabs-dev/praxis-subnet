@@ -58,7 +58,7 @@ class TabularQLearning:
     def __init__(self, config: TabularQConfig | None = None) -> None:
         self.config: Final[TabularQConfig] = config or TabularQConfig()
 
-    def train(self, env: gym.Env, seed: int, budget: int) -> TabularQState:  # type: ignore[type-arg]
+    def train(self, env: gym.Env[Any, Any], seed: int, budget: int) -> TabularQState:
         if not isinstance(env.action_space, gym.spaces.Discrete):
             raise NotImplementedError(
                 "TabularQLearning requires a Discrete action space; "
@@ -115,7 +115,7 @@ class TabularQLearning:
         return TabularQState(q_table=q_table, config=cfg, n_actions=n_actions)
 
     def evaluate(
-        self, env: gym.Env, state: Any, seed: int, n_episodes: int  # type: ignore[type-arg]
+        self, env: gym.Env[Any, Any], state: Any, seed: int, n_episodes: int
     ) -> EvalResult:
         if not isinstance(state, TabularQState):
             raise TypeError(
