@@ -28,34 +28,39 @@ def test_default_config() -> None:
 
 
 def test_default_bands_have_expected_constants() -> None:
-    """Pin the empirically calibrated values."""
+    """Pin the Phase 1 uniform-threshold values (T=0.5 across all bands)."""
     e = DEFAULT_BAND_CONFIGS[DifficultyBand.EASY]
     assert e.training_budget == 10_000
     assert e.eval_episodes == 20
-    assert e.threshold_normalized == 0.7
+    assert e.threshold_normalized == 0.5
 
     m = DEFAULT_BAND_CONFIGS[DifficultyBand.MEDIUM]
     assert m.training_budget == 30_000
     assert m.eval_episodes == 20
-    assert m.threshold_normalized == 0.4
+    assert m.threshold_normalized == 0.5
 
     h = DEFAULT_BAND_CONFIGS[DifficultyBand.HARD]
     assert h.training_budget == 100_000
     assert h.eval_episodes == 20
-    assert h.threshold_normalized == 0.1
+    assert h.threshold_normalized == 0.5
 
 
 def test_custom_band_config_overrides_threshold() -> None:
-    """Drop threshold to 0.0 makes any non-broken env pass."""
+    """Custom threshold is respected: threshold in (random_norm, solver_norm) gives passed=True.
+
+    Gridworld EASY calibration: random_norm~0.499, solver_norm~1.0 at full budget.
+    threshold=0.6 sits above random_norm and below solver_norm, so the check passes.
+    """
     manifest = build_easy_manifest()
     cfg = SolverBaselineConfig(
         band_configs={
-            DifficultyBand.EASY: BandConfig(training_budget=100, eval_episodes=3, threshold_normalized=0.0),
+            DifficultyBand.EASY: BandConfig(training_budget=10_000, eval_episodes=3, threshold_normalized=0.6),
         }
     )
     report = check_solver_baseline(manifest, cfg)
     assert report.passed is True
-    assert report.threshold_normalized == 0.0
+    assert report.threshold_normalized == 0.6
+    assert report.failure_reason is None
 
 
 def test_override_eval_seeds_sets_episode_count() -> None:

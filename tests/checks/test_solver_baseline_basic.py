@@ -29,6 +29,7 @@ def test_solver_baseline_easy_passes() -> None:
         f"EASY failed: norm={report.normalized_mean_return:.3f} < thr={report.threshold_normalized}; "
         f"random_norm={report.random_baseline_normalized:.3f}"
     )
+    assert report.failure_reason is None
     assert report.reference_solver == SolverId.TABULAR_Q_LEARNING
     assert report.eval_episodes == 20
 
@@ -48,6 +49,7 @@ def test_solver_baseline_medium_passes() -> None:
         f"MEDIUM failed: norm={report.normalized_mean_return:.3f} < thr={report.threshold_normalized}; "
         f"random_norm={report.random_baseline_normalized:.3f}"
     )
+    assert report.failure_reason is None
     assert report.reference_solver == SolverId.TABULAR_Q_LEARNING
     assert report.eval_episodes == 20
 
@@ -67,5 +69,6 @@ def test_solver_baseline_hard_passes() -> None:
         f"HARD failed: norm={report.normalized_mean_return:.3f} < thr={report.threshold_normalized}; "
         f"random_norm={report.random_baseline_normalized:.3f}"
     )
+    assert report.failure_reason is None
     assert report.reference_solver == SolverId.TABULAR_Q_LEARNING
     assert report.eval_episodes == 20

@@ -4,22 +4,22 @@ Looks up the manifest's reference_solver from SOLVER_REGISTRY, trains it
 on a band-appropriate budget, evaluates the trained policy, and asserts
 the normalized mean episodic return clears a per-band threshold.
 
-Phase 1 ships per-band thresholds calibrated empirically against the
-gridworld bands with TabularQLearning. Phase 2 will refine via multi-seed
-statistical calibration.
+Phase 1 ships a uniform threshold T=0.5 across all bands (closes RT-004
+F-021). Bands differ only in training budget. Phase 2 will refine via
+multi-seed statistical calibration.
 
-Lower-bound only: a failing manifest is rejected, but the check does not
-upper-bound difficulty. A separate random-policy baseline is computed
-and reported as random_baseline_normalized; if it crosses the same
-threshold (and the band is not EASY), trivial_random_warning is set.
-This documents the Phase 1 limitation; Phase 2 will harden against
-trivially-easy envs that pass the lower bound by accident.
+Both lower-bound and random-policy-floor are enforced: a manifest fails if
+the solver's normalized return is below the threshold (failure_reason=
+"solver_below_threshold"), if the random-policy baseline clears the same
+threshold (failure_reason="trivial_random_baseline"), or both. The
+random-policy floor is a hard failure across all bands; there is no
+EASY-band exemption.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Final
+from typing import Final, Literal
 
 from pydantic import BaseModel
 
@@ -32,10 +32,14 @@ from praxis.solver.registry import SOLVER_REGISTRY
 __all__ = [
     "BandConfig",
     "DEFAULT_BAND_CONFIGS",
+    "FailureReason",
     "SolverBaselineConfig",
     "SolverBaselineReport",
     "check_solver_baseline",
 ]
+
+# Four mutually-exclusive reasons a SolverBaselineReport can have passed=False.
+FailureReason = Literal["solver_below_threshold", "trivial_random_baseline", "both"]
 
 
 # ---------------------------------------------------------------------------
@@ -52,10 +56,17 @@ class BandConfig:
     threshold_normalized: float
 
 
+# Phase 1: uniform threshold T=0.5 across all bands. Bands differ only in
+# training budget. Closes RT-004 F-021 (creator declaring HARD on actually-EASY
+# env to lower threshold from 0.7 to 0.1). Residual gap: declaring HARD on an
+# actually-MEDIUM env to gain 100K budget vs 30K is documented as Phase 2 work
+# under Option D (two-budget compute verification: train at the declared band's
+# budget AND at the next-easier band's budget; pass requires the easier-band run
+# to be below threshold).
 DEFAULT_BAND_CONFIGS: Final[dict[DifficultyBand, BandConfig]] = {
-    DifficultyBand.EASY:   BandConfig(training_budget=10_000,  eval_episodes=20, threshold_normalized=0.7),
-    DifficultyBand.MEDIUM: BandConfig(training_budget=30_000,  eval_episodes=20, threshold_normalized=0.4),
-    DifficultyBand.HARD:   BandConfig(training_budget=100_000, eval_episodes=20, threshold_normalized=0.1),
+    DifficultyBand.EASY:   BandConfig(training_budget=10_000,  eval_episodes=20, threshold_normalized=0.5),
+    DifficultyBand.MEDIUM: BandConfig(training_budget=30_000,  eval_episodes=20, threshold_normalized=0.5),
+    DifficultyBand.HARD:   BandConfig(training_budget=100_000, eval_episodes=20, threshold_normalized=0.5),
 }
 
 
@@ -94,7 +105,7 @@ class SolverBaselineReport(BaseModel):
     env_id:
         The environment ID from the manifest.
     passed:
-        True iff normalized_mean_return >= threshold_normalized.
+        True iff solver_normalized >= threshold AND random_normalized < threshold.
     difficulty_band:
         The band declared in the manifest.
     reference_solver:
@@ -109,14 +120,19 @@ class SolverBaselineReport(BaseModel):
         raw_mean_return normalized to [0, 1] via declared reward bounds.
         Clamped at 0 from below; no upper clamp.
     threshold_normalized:
-        The band's pass threshold. passed = normalized_mean_return >= threshold.
+        The band's pass threshold.
     random_baseline_normalized:
         Normalized mean return of a seeded-random policy over the same
-        eval_episodes. Diagnostic only; does not affect pass/fail.
+        eval_episodes. Used as a hard-fail signal; if this clears the
+        threshold the report has passed=False regardless of the solver score.
     trivial_random_warning:
-        True when random_baseline_normalized >= threshold_normalized and
-        difficulty_band != EASY. Signals the env may be trivially easy.
-        Phase 2 will harden the upper bound; Phase 1 logs this as a warning.
+        True when random_baseline_normalized >= threshold_normalized.
+        Diagnostic flag retained for visibility; the actual pass/fail signal
+        from the random floor is captured in failure_reason. No EASY-band
+        exemption applies.
+    failure_reason:
+        Set when passed=False. One of "solver_below_threshold",
+        "trivial_random_baseline", or "both". None when passed=True.
     per_episode_returns_solver:
         Per-episode returns from the solver's greedy policy.
     per_episode_returns_random:
@@ -134,6 +150,7 @@ class SolverBaselineReport(BaseModel):
     threshold_normalized: float
     random_baseline_normalized: float
     trivial_random_warning: bool
+    failure_reason: FailureReason | None = None
     per_episode_returns_solver: tuple[float, ...]
     per_episode_returns_random: tuple[float, ...]
 
@@ -248,14 +265,29 @@ def check_solver_baseline(
     raw_mean_random = float(sum(random_returns) / len(random_returns)) if random_returns else 0.0
     normalized_random = _normalize(raw_mean_random)
 
-    trivial_warning = (
-        normalized_random >= band_cfg.threshold_normalized
-        and manifest.difficulty_band != DifficultyBand.EASY
-    )
+    solver_pass = normalized_solver >= band_cfg.threshold_normalized
+    random_fail = normalized_random >= band_cfg.threshold_normalized
+
+    if solver_pass and not random_fail:
+        passed = True
+        reason: FailureReason | None = None
+    elif not solver_pass and random_fail:
+        passed = False
+        reason = "both"
+    elif not solver_pass:
+        passed = False
+        reason = "solver_below_threshold"
+    else:  # solver_pass and random_fail
+        passed = False
+        reason = "trivial_random_baseline"
+
+    # Retained as a diagnostic flag; does not drive pass/fail directly.
+    # No EASY-band exemption: random_fail is symmetric across all bands.
+    trivial_warning = random_fail
 
     return SolverBaselineReport(
         env_id=manifest.env_id,
-        passed=normalized_solver >= band_cfg.threshold_normalized,
+        passed=passed,
         difficulty_band=manifest.difficulty_band,
         reference_solver=manifest.reference_solver,
         training_budget=band_cfg.training_budget,
@@ -265,6 +297,7 @@ def check_solver_baseline(
         threshold_normalized=band_cfg.threshold_normalized,
         random_baseline_normalized=normalized_random,
         trivial_random_warning=trivial_warning,
+        failure_reason=reason,
         per_episode_returns_solver=eval_result.per_episode_returns,
         per_episode_returns_random=tuple(random_returns),
     )
