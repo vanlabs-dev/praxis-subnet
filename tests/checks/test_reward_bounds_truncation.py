@@ -82,7 +82,7 @@ def test_truncated_episodes_no_step_violations() -> None:
 def test_sample_count_matches_config() -> None:
     """Custom config with 4 seeds produces sample_count=4, all truncated."""
     manifest = _manifest()
-    cfg = RewardBoundsConfig(sample_seeds=(1000, 1001, 1002, 1003))
+    cfg = RewardBoundsConfig(override_seeds=(1000, 1001, 1002, 1003))
     report = check_reward_bounds(manifest, config=cfg)
 
     assert report.sample_count == 4

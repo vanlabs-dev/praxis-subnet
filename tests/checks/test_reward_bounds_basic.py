@@ -89,10 +89,10 @@ def test_episode_violation_on_small_grid() -> None:
     """3x3 grid with a max_per_episode bound below the actual best total
     triggers an episode violation on terminated episodes.
 
-    Default seeds 1000..1007 on a 3x3 grid (max_episode_steps=36):
-    Seeds 1000, 1002-1006 terminate naturally (6 out of 8).
-    The smallest terminal total is ~0.73 (seed 1004, 22 steps = 0.99 - 0.21).
-    Setting max_per_episode=0.5 forces violations on all terminals.
+    On a 3x3 grid (max_episode_steps=36), random-walk seeds terminate
+    naturally in the majority of rollouts. The shortest possible terminal
+    total is 1.0 - 0.01 * 4 = 0.96. Setting max_per_episode=0.5 forces
+    violations on all terminals.
     """
     grid_size = 3
     max_steps = 4 * grid_size * grid_size  # 36

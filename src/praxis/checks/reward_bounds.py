@@ -1,17 +1,18 @@
 """Reward bounds check for Praxis validator.
 
 Verifies that an environment's per-step and per-episode rewards stay within
-the declared bounds across a fixed sample of seeds.
+the declared bounds across a manifest-derived sample of seeds.
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from pydantic import BaseModel
 
 from praxis.checks._rollout import EnvSpec, iter_rollout
+from praxis.checks._seeds import derive_validator_seeds
 from praxis.protocol import ActionPolicyId, EnvManifest
 
 __all__ = [
@@ -28,23 +29,28 @@ __all__ = [
 class RewardBoundsConfig:
     """Sampling configuration for the reward bounds check.
 
-    Phase 1 limitation: ``sample_seeds`` is a fixed validator-side range, which
-    means a sufficiently motivated creator could pre-tune their env to keep
-    rewards inside declared bounds for these specific seeds and violate them
-    elsewhere. Phase 2 will replace this with commit-reveal or beacon-derived
-    seeds; see the relevant DR.
+    Sample seeds are derived from the manifest via
+    praxis.checks._seeds.derive_validator_seeds with salt=b"reward_bounds".
+    This means the seeds depend on env-defining fields (env_id, env_version,
+    entry_point, kwargs) but NOT on declared bounds, anchors, or metadata --
+    a creator cannot shift validator seeds by tweaking the claims they make.
+
+    For Phase 1 collusion-resistance limitations, see derive_validator_seeds.
 
     Attributes
     ----------
-    sample_seeds:
-        Tuple of integer seeds to sample. Default is ``range(1000, 1008)``
-        (eight seeds). Configurable to support targeted or expanded sampling.
+    sample_seed_count:
+        Number of seeds to derive. Default 8.
+    override_seeds:
+        Explicit seed tuple. For tests and red-team experiments only;
+        production code paths leave this None.
     action_policy:
         Policy ID used to generate actions during sampling. Must be present
         in ``POLICY_REGISTRY``.
     """
 
-    sample_seeds: tuple[int, ...] = field(default_factory=lambda: tuple(range(1000, 1008)))
+    sample_seed_count: int = 8
+    override_seeds: tuple[int, ...] | None = None
     action_policy: ActionPolicyId = ActionPolicyId.SEEDED_RANDOM
 
 
@@ -146,7 +152,7 @@ class RewardBoundsReport(BaseModel):
         True iff there are zero step violations AND zero episode violations
         (strict pass/fail).
     sample_count:
-        Number of seeds sampled (equals ``len(config.sample_seeds)``).
+        Number of seeds sampled.
     terminated_episode_count:
         Number of sampled episodes that terminated naturally (not truncated).
     per_episode_unverified:
@@ -184,17 +190,21 @@ def check_reward_bounds(
 ) -> RewardBoundsReport:
     """Sample rollouts and verify rewards stay within declared bounds.
 
-    For each seed in ``config.sample_seeds``, one full episode is rolled out
-    (up to ``manifest.max_episode_steps`` steps). Every per-step reward is
-    checked against ``declared_reward_bounds.min_per_step`` and
+    For each derived seed, one full episode is rolled out (up to
+    ``manifest.max_episode_steps`` steps). Every per-step reward is checked
+    against ``declared_reward_bounds.min_per_step`` and
     ``declared_reward_bounds.max_per_step``. For naturally-terminated episodes,
     the cumulative reward is also checked against the per-episode bounds.
 
-    Phase 1 limitation: ``config.sample_seeds`` is a fixed validator-side
-    range (default ``range(1000, 1008)``), which means a motivated creator
-    could pre-tune their environment to behave correctly for exactly these
-    seeds while violating bounds on other seeds. Phase 2 will switch to
-    commit-reveal or beacon-derived seeds to remove this attack surface.
+    Seeds are derived deterministically from env-defining manifest fields via
+    ``derive_validator_seeds(manifest, config.sample_seed_count,
+    salt=b"reward_bounds")``. Declared bounds, anchor trajectories, and creator
+    metadata are excluded from the hash so a creator cannot shift the sampled
+    seeds by tweaking those fields. See ``derive_validator_seeds`` for the
+    Phase 1 collusion-resistance limitation.
+
+    If ``config.override_seeds`` is set, those seeds are used directly instead
+    of deriving them. This is intended for tests and red-team experiments only.
 
     Bounds are strict:
     - Any per-step reward outside ``[min_per_step, max_per_step]`` is a
@@ -214,7 +224,7 @@ def check_reward_bounds(
         importlib using ``manifest.entry_point`` and ``manifest.kwargs``.
     config:
         Sampling configuration. Defaults to ``RewardBoundsConfig()`` if
-        not provided (8 seeds in range 1000..1007).
+        not provided (8 derived seeds).
 
     Returns
     -------
@@ -223,6 +233,12 @@ def check_reward_bounds(
     """
     if config is None:
         config = RewardBoundsConfig()
+
+    seeds = (
+        config.override_seeds
+        if config.override_seeds is not None
+        else derive_validator_seeds(manifest, config.sample_seed_count, salt=b"reward_bounds")
+    )
 
     bounds = manifest.declared_reward_bounds
     env_spec = EnvSpec(
@@ -235,7 +251,7 @@ def check_reward_bounds(
     episode_violations: list[EpisodeViolation] = []
     samples: list[SeedSample] = []
 
-    for seed in config.sample_seeds:
+    for seed in seeds:
         _obs0, it = iter_rollout(env_spec, seed, config.action_policy, manifest.max_episode_steps)
 
         min_r = math.inf

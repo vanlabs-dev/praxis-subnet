@@ -14,21 +14,21 @@ from praxis.protocol import ActionPolicyId
 
 
 def test_default_config_has_eight_seeds() -> None:
-    """Default RewardBoundsConfig contains exactly 8 seeds."""
+    """Default RewardBoundsConfig requests 8 derived seeds."""
     cfg = RewardBoundsConfig()
-    assert len(cfg.sample_seeds) == 8
+    assert cfg.sample_seed_count == 8
 
 
-def test_default_config_seeds_range() -> None:
-    """Default seeds are exactly range(1000, 1008)."""
+def test_default_config_override_seeds_is_none() -> None:
+    """Default RewardBoundsConfig has no override_seeds."""
     cfg = RewardBoundsConfig()
-    assert cfg.sample_seeds == tuple(range(1000, 1008))
+    assert cfg.override_seeds is None
 
 
-def test_custom_seeds_two_samples() -> None:
-    """Config with 2 seeds produces sample_count=2."""
+def test_custom_override_seeds_two_samples() -> None:
+    """Config with override_seeds=(2000, 2001) produces sample_count=2."""
     manifest = build_easy_manifest()
-    cfg = RewardBoundsConfig(sample_seeds=(2000, 2001))
+    cfg = RewardBoundsConfig(override_seeds=(2000, 2001))
     report = check_reward_bounds(manifest, cfg)
 
     assert report.sample_count == 2
@@ -46,7 +46,7 @@ def test_config_is_frozen() -> None:
     """RewardBoundsConfig is immutable (frozen dataclass)."""
     cfg = RewardBoundsConfig()
     try:
-        cfg.sample_seeds = (9999,)  # type: ignore[misc]
+        cfg.sample_seed_count = 4  # type: ignore[misc]
         raise AssertionError("expected FrozenInstanceError")
     except Exception as exc:
         assert "frozen" in type(exc).__name__.lower() or "FrozenInstance" in type(exc).__name__
