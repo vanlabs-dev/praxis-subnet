@@ -12,6 +12,7 @@ from build_gridworld_manifest import build_easy_manifest, build_hard_manifest, b
 
 from praxis.checks.solver_baseline import check_solver_baseline
 from praxis.protocol.types import SolverId
+from praxis.solver.registry import SOLVER_REGISTRY
 
 
 def test_solver_baseline_easy_passes() -> None:
@@ -32,6 +33,10 @@ def test_solver_baseline_easy_passes() -> None:
     assert report.failure_reason is None
     assert report.reference_solver == SolverId.TABULAR_Q_LEARNING
     assert report.eval_episodes == 20
+    assert SolverId.TABULAR_Q_LEARNING in report.solver_results
+    assert len(report.solver_results) == len(SOLVER_REGISTRY)
+    assert report.solver_results[SolverId.TABULAR_Q_LEARNING].passed is True
+    assert report.solver_results[SolverId.TABULAR_Q_LEARNING].failure_reason == report.failure_reason
 
 
 def test_solver_baseline_medium_passes() -> None:
@@ -52,6 +57,10 @@ def test_solver_baseline_medium_passes() -> None:
     assert report.failure_reason is None
     assert report.reference_solver == SolverId.TABULAR_Q_LEARNING
     assert report.eval_episodes == 20
+    assert SolverId.TABULAR_Q_LEARNING in report.solver_results
+    assert len(report.solver_results) == len(SOLVER_REGISTRY)
+    assert report.solver_results[SolverId.TABULAR_Q_LEARNING].passed is True
+    assert report.solver_results[SolverId.TABULAR_Q_LEARNING].failure_reason == report.failure_reason
 
 
 def test_solver_baseline_hard_passes() -> None:
@@ -72,3 +81,7 @@ def test_solver_baseline_hard_passes() -> None:
     assert report.failure_reason is None
     assert report.reference_solver == SolverId.TABULAR_Q_LEARNING
     assert report.eval_episodes == 20
+    assert SolverId.TABULAR_Q_LEARNING in report.solver_results
+    assert len(report.solver_results) == len(SOLVER_REGISTRY)
+    assert report.solver_results[SolverId.TABULAR_Q_LEARNING].passed is True
+    assert report.solver_results[SolverId.TABULAR_Q_LEARNING].failure_reason == report.failure_reason

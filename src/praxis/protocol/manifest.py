@@ -19,20 +19,24 @@ class TrajectoryAnchor(BaseModel):
 
 
 class EnvManifest(BaseModel):
-    """Submission manifest for a Praxis environment.
-
-    reference_solver: Identifies which solver from SOLVER_REGISTRY the
-    validator runs for the solver-baseline check. Defaults to
-    TABULAR_Q_LEARNING (Phase 1 reference for tabular envs). Solver
-    choice is a protocol claim; it does not affect derived validator
-    seeds (see derive_validator_seeds).
-    """
+    """Submission manifest for a Praxis environment."""
 
     protocol_version: Literal["0.3.0"]
     env_id: str = Field(pattern=ENV_ID_PATTERN)
     entry_point: str = Field(pattern=ENTRY_POINT_PATTERN)
     difficulty_band: DifficultyBand
-    reference_solver: SolverId = SolverId.TABULAR_Q_LEARNING
+    reference_solver: SolverId = Field(
+        default=SolverId.TABULAR_Q_LEARNING,
+        description=(
+            "Phase 1 (F-023 closure): the validator does NOT honor this field. The "
+            "solver-baseline check selects solvers from SOLVER_REGISTRY based on env "
+            "runtime compatibility (per-solver NotImplementedError signals), not on "
+            "this declaration. The field is preserved here for Phase 2 forward-"
+            "compatibility, where it may be repurposed as a creator-declared "
+            "compatibility hint subject to bonded constraints. See RT-004 finding "
+            "F-023 for the rationale."
+        ),
+    )
     max_episode_steps: int = Field(gt=0)
     declared_reward_bounds: RewardBounds
     anchor_trajectories: list[TrajectoryAnchor] = Field(min_length=4, max_length=32)

@@ -50,6 +50,11 @@ def test_lazy_env_fails_baseline() -> None:
     # LazyEnv always returns -1; random baseline normalizes to 0.0 (well below 0.7)
     # so the random floor does not fire and failure is purely the solver.
     assert report.failure_reason == "solver_below_threshold"
+    assert SolverId.TABULAR_Q_LEARNING in report.solver_results
+    assert len(report.solver_results) == 1
+    assert report.solver_results[SolverId.TABULAR_Q_LEARNING].passed is False
+    assert report.solver_results[SolverId.TABULAR_Q_LEARNING].failure_reason == "solver_below_threshold"
+    assert report.solver_results[SolverId.TABULAR_Q_LEARNING].failure_reason == report.failure_reason
 
 
 def test_trivial_env_now_fails_F021_closure() -> None:
@@ -92,3 +97,8 @@ def test_trivial_env_now_fails_F021_closure() -> None:
     # Random policy always gets +1 on the first step and terminates -> normalized = 1.0
     assert report.random_baseline_normalized == pytest.approx(1.0)
     assert report.normalized_mean_return == pytest.approx(1.0)
+    assert SolverId.TABULAR_Q_LEARNING in report.solver_results
+    assert len(report.solver_results) == 1
+    assert report.solver_results[SolverId.TABULAR_Q_LEARNING].passed is False
+    assert report.solver_results[SolverId.TABULAR_Q_LEARNING].failure_reason == "trivial_random_baseline"
+    assert report.solver_results[SolverId.TABULAR_Q_LEARNING].failure_reason == report.failure_reason
