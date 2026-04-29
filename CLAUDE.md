@@ -85,12 +85,13 @@ Key conventions:
 
 8 of 11 steps complete. 182 tests, CI green on push and PR.
 
-Closed: scaffold; protocol; one reference env (gridworld); four validator checks (determinism with self-consistency, reward bounds, reset correctness, solver baseline); pluggable solver registry; RT-001 with three of five findings closed.
+Closed: scaffold; protocol; one reference env (gridworld); four validator checks (determinism with self-consistency, reward bounds, reset correctness, solver baseline); pluggable solver registry; consolidated post-step-8 red-team Stage 1 (RT-001 through RT-005, 38 attacks catalogued, 40 findings, 5 CRITICAL, 3 of 5 RT-001 findings closed in code).
 
-Remaining: validator pipeline orchestration; bonded-submission shim; end-to-end demo. Plus the consolidated post-step-8 red-team pass.
+Remaining: validator pipeline orchestration; bonded-submission shim; end-to-end demo. Plus a triage fix-pass on the cheap CRITICAL findings (F-021 band declaration, F-003/F-032 sys.modules guard, F-023 reference_solver) before step 9, and a Stage 2 PoC pass at the end of Phase 1.
 
 ## Known limitations carrying forward
 
-- F-002 (canonical action lookup): DEFERRED to Phase 2 (chain-beacon entropy)
-- F-003 (importlib sandbox): DEFERRED to Phase 2 (process isolation / module allow-list)
+- F-002 (canonical action lookup): DEFERRED, HIGH (Phase 2 chain-beacon entropy)
+- F-003 (importlib sandbox): DEFERRED, CRITICAL reassessed by RT-005 (Phase 2 process isolation; interim sys.modules guard planned for Phase 1 fix-pass)
+- F-031 (cross-cutting composition): DEFERRED, CRITICAL (Phase 2 architectural; mitigated indirectly by closing F-021, F-023, and the F-003/F-032 interim guard)
 - Solver baseline is lower-bound only. `trivial_random_warning` flag surfaces likely upper-bound gaps; Phase 2 hardens this.
