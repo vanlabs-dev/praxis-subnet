@@ -1,7 +1,7 @@
 # RT-001: Determinism check red-team pass
 
-Status: Living document -- 3 of 5 findings closed
-Date: 2026-04-29 (initial), 2026-04-29 (last updated)
+Status: Living document -- 3 of 5 findings closed ; F-003 severity reassessed CRITICAL by RT-005
+Date: 2026-04-29 (initial), 2026-04-30 (last updated)
 Scope: src/praxis/checks/determinism.py and src/praxis/checks/_rollout.py
 Reviewed commits: 489a592..126857f
 
@@ -62,6 +62,7 @@ work: chain-beacon entropy for F-002 to make derived seeds unpredictable per
 validation epoch, and process isolation / module allow-listing for F-003.
 Both are deferred to a consolidated red-team pass after step 8 (solver
 baseline) lands; RT-001 will be cross-referenced from that pass.
+F-003 severity reassessed CRITICAL by RT-005 (commit 7ca1be1); the deferral remains in place pending Phase 2 subprocess isolation, with an interim sys.modules-snapshot mitigation proposed in RT-005 F-032's fix sketch.
 
 ## Attack catalog
 
@@ -269,7 +270,7 @@ baseline) lands; RT-001 will be cross-referenced from that pass.
 
 ### A-006: Import-time side effects in the entry-point module
 - Category: infrastructure / importlib
-- Severity: HIGH
+- Severity: CRITICAL
 - Premise: The validator runs `import_module(module_path)` (`_rollout.py` line
   90) where `module_path` is taken from a creator-controlled manifest. Whatever
   side effects fire during import will execute on the validator's host.
@@ -324,6 +325,8 @@ baseline) lands; RT-001 will be cross-referenced from that pass.
     infrastructure work outside Phase 1's scope.
   - Re-evaluation: consolidated red-team pass scheduled after step 8
     (solver baseline) lands. RT-001 cross-referenced from that pass.
+
+  Severity reassessed CRITICAL on 2026-04-30 per RT-005 cross-cutting analysis. Drivers: 58-82 _load_env calls per manifest evaluation (RT-003 F-019 documents 16x amplification on reset_correctness, RT-004 F-029 documents 22x on solver_baseline); sys.modules contamination persists across creator-miners (RT-005 F-032); a single monkey-patch breaks every guarantee the protocol composes on top of (RT-005 F-003 re-evaluation). Original RT-001 entry preserved as historical record. See docs/red-team/RT-005-cross-cutting.md for the full reassessment, including the proposed interim Phase 1 sys.modules-snapshot mitigation that hedges between now and full subprocess isolation.
 
 ### A-007: TimeLimit / internal-step-counter disagreement
 - Category: validator logic bypass / TimeLimit
@@ -528,7 +531,7 @@ concerns (A-008, A-009).
 | F-NNN | severity | status | one-line summary | resolving commit |
 |---|---|---|---|---|
 | F-002 | HIGH | DEFERRED | Canonical SEEDED_RANDOM action sequence fully public per seed; env can lie on every off-canonical (seed, action) pair. | DEFERRED |
-| F-003 | HIGH | DEFERRED | importlib(entry_point) runs creator-controlled top-level code without a sandbox. | DEFERRED |
+| F-003 | CRITICAL | DEFERRED | importlib(entry_point) runs creator-controlled top-level code without a sandbox. [RT-005 reassessment] | DEFERRED |
 | F-001 | HIGH | CLOSED | Validator only tested creator-declared seeds; anchor cherry-picking trivially passes determinism. | 126857f |
 | F-004 | MEDIUM | CLOSED (toggle) | Infos excluded from trajectory hash by default; walltime/pid leak invisibly through info dicts. | 126857f |
 | F-005 | MEDIUM | CLOSED | No anchor n_steps invariant; manifests can declare unfittable anchors. | 14f9886 |
