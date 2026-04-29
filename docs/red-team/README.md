@@ -10,7 +10,7 @@ This directory holds adversarial attack catalogs against the Praxis validator. E
 | RT-002 | `src/praxis/checks/reward_bounds.py`                      | Draft                               |
 | RT-003 | `src/praxis/checks/reset_correctness.py`                  | Draft                               |
 | RT-004 | `src/praxis/checks/solver_baseline.py`                    | Draft                               |
-| RT-005 | Cross-cutting + RT-001 F-002/F-003 re-evaluation           | Not started                         |
+| RT-005 | Cross-cutting + RT-001 F-002/F-003 re-evaluation           | Draft                               |
 
 Update this table whenever an RT pass changes status.
 
