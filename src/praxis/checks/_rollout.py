@@ -55,7 +55,7 @@ class EnvSpec:
     max_episode_steps: int = 0
 
 
-def _load_env(spec: EnvSpec) -> gym.Env:  # type: ignore[type-arg]
+def _load_env(spec: EnvSpec) -> gym.Env[Any, Any]:
     """Resolve and instantiate an environment from an EnvSpec.
 
     Imports the module, retrieves the class, instantiates it with spec.kwargs,
@@ -116,7 +116,7 @@ class ActionPolicy(Protocol):
         self,
         seed: int,
         n_steps: int,
-        action_space: gym.Space,  # type: ignore[type-arg]
+        action_space: gym.Space[Any],
     ) -> npt.NDArray[np.int64]:
         """Return an array of n_steps actions drawn from action_space."""
         ...
@@ -136,7 +136,7 @@ class SeededRandomPolicy:
         self,
         seed: int,
         n_steps: int,
-        action_space: gym.Space,  # type: ignore[type-arg]
+        action_space: gym.Space[Any],
     ) -> npt.NDArray[np.int64]:
         """Return n_steps actions sampled uniformly from a Discrete space.
 
