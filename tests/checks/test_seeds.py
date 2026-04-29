@@ -15,6 +15,7 @@ from praxis.checks._seeds import derive_validator_seeds
 from praxis.protocol import (
     ActionPolicyId,
     RewardBounds,
+    SolverId,
     TrajectoryAnchor,
 )
 
@@ -184,3 +185,22 @@ def test_empty_salt_raises() -> None:
     manifest = build_easy_manifest()
     with pytest.raises(ValueError, match="salt must be non-empty"):
         derive_validator_seeds(manifest, 8, b"")
+
+
+def test_reference_solver_does_NOT_change_seeds() -> None:
+    """Switching reference_solver must not shift validator-derived seeds.
+
+    Solver choice is a protocol claim; seeds derive from env-defining
+    fields only. This is the same collusion-resistance invariant as
+    declared_reward_bounds, anchor_trajectories, and creator_metadata.
+
+    Phase 1 note: only one SolverId value exists (TABULAR_Q_LEARNING), so
+    manifest_a and manifest_b are identical today. This test pins the
+    invariant so that when Phase 2 adds PPO, any regression where
+    reference_solver accidentally enters the seed hash will be caught here.
+    """
+    manifest_a = build_easy_manifest()
+    manifest_b = manifest_a.model_copy(update={"reference_solver": SolverId.TABULAR_Q_LEARNING})
+    seeds_a = derive_validator_seeds(manifest_a, 8, b"reward_bounds")
+    seeds_b = derive_validator_seeds(manifest_b, 8, b"reward_bounds")
+    assert seeds_a == seeds_b

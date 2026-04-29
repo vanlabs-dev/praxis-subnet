@@ -4,7 +4,7 @@ from typing import Any, Literal, Self
 from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from praxis.protocol.types import ActionPolicyId, DifficultyBand, RewardBounds
+from praxis.protocol.types import ActionPolicyId, DifficultyBand, RewardBounds, SolverId
 
 ENV_ID_PATTERN = r"^[a-z][a-z0-9_-]{2,63}$"
 ENTRY_POINT_PATTERN = r"^[\w\.]+:[\w]+$"
@@ -19,10 +19,20 @@ class TrajectoryAnchor(BaseModel):
 
 
 class EnvManifest(BaseModel):
-    protocol_version: Literal["0.2.0"]
+    """Submission manifest for a Praxis environment.
+
+    reference_solver: Identifies which solver from SOLVER_REGISTRY the
+    validator runs for the solver-baseline check. Defaults to
+    TABULAR_Q_LEARNING (Phase 1 reference for tabular envs). Solver
+    choice is a protocol claim; it does not affect derived validator
+    seeds (see derive_validator_seeds).
+    """
+
+    protocol_version: Literal["0.3.0"]
     env_id: str = Field(pattern=ENV_ID_PATTERN)
     entry_point: str = Field(pattern=ENTRY_POINT_PATTERN)
     difficulty_band: DifficultyBand
+    reference_solver: SolverId = SolverId.TABULAR_Q_LEARNING
     max_episode_steps: int = Field(gt=0)
     declared_reward_bounds: RewardBounds
     anchor_trajectories: list[TrajectoryAnchor] = Field(min_length=4, max_length=32)

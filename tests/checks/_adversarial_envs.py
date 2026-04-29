@@ -24,10 +24,11 @@ from praxis.protocol import (
     DifficultyBand,
     EnvManifest,
     RewardBounds,
+    SolverId,
     TrajectoryAnchor,
 )
 
-_PROTOCOL_VERSION = "0.2.0"
+_PROTOCOL_VERSION = "0.3.0"
 _ADV_MODULE = "tests.checks._adversarial_envs"
 _FAKE_HASH = "0" * 64
 
@@ -41,6 +42,7 @@ def make_adversarial_manifest(env_id: str, class_name: str) -> EnvManifest:
         entry_point=f"{_ADV_MODULE}:{class_name}",
         kwargs={},
         difficulty_band=DifficultyBand.EASY,
+        reference_solver=SolverId.TABULAR_Q_LEARNING,
         max_episode_steps=20,
         declared_reward_bounds=RewardBounds(
             min_per_step=-1.0,

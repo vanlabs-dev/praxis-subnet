@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from praxis.protocol.manifest import EnvManifest, TrajectoryAnchor
-from praxis.protocol.types import ActionPolicyId, DifficultyBand, RewardBounds
+from praxis.protocol.types import ActionPolicyId, DifficultyBand, RewardBounds, SolverId
 
 # A hex string that matches the 64-char blake2b-256 pattern.
 _FAKE_HASH = "a" * 64
@@ -29,7 +29,7 @@ _BOUNDS = RewardBounds(
 
 def _valid_manifest() -> dict[str, object]:
     return {
-        "protocol_version": "0.2.0",
+        "protocol_version": "0.3.0",
         "env_id": "test-env-v1",
         "entry_point": "praxis.envs.test_env:TestEnv",
         "difficulty_band": DifficultyBand.EASY,
@@ -44,7 +44,7 @@ def _valid_manifest() -> dict[str, object]:
 def test_valid_manifest_validates() -> None:
     m = EnvManifest(**_valid_manifest())  # type: ignore[arg-type]
     assert m.env_id == "test-env-v1"
-    assert m.protocol_version == "0.2.0"
+    assert m.protocol_version == "0.3.0"
     assert len(m.anchor_trajectories) == 4
 
 
@@ -189,11 +189,46 @@ def test_protocol_version_010_rejected() -> None:
         EnvManifest(**data)  # type: ignore[arg-type]
 
 
-def test_protocol_version_020_required() -> None:
+def test_protocol_version_020_rejected() -> None:
+    """0.2.0 is no longer the current version; manifests must use 0.3.0."""
     data = _valid_manifest()
     data["protocol_version"] = "0.2.0"
+    with pytest.raises(ValidationError):
+        EnvManifest(**data)  # type: ignore[arg-type]
+
+
+def test_protocol_version_030_required() -> None:
+    data = _valid_manifest()
+    data["protocol_version"] = "0.3.0"
     m = EnvManifest(**data)  # type: ignore[arg-type]
-    assert m.protocol_version == "0.2.0"
+    assert m.protocol_version == "0.3.0"
+
+
+# --- Tests for reference_solver ---
+
+
+def test_reference_solver_defaults_to_tabular_q() -> None:
+    """A manifest with reference_solver omitted gets SolverId.TABULAR_Q_LEARNING."""
+    m = EnvManifest(**_valid_manifest())  # type: ignore[arg-type]
+    assert m.reference_solver == SolverId.TABULAR_Q_LEARNING
+
+
+def test_reference_solver_explicit() -> None:
+    """Setting reference_solver=SolverId.TABULAR_Q_LEARNING validates and round-trips."""
+    data = _valid_manifest()
+    data["reference_solver"] = SolverId.TABULAR_Q_LEARNING
+    m = EnvManifest(**data)  # type: ignore[arg-type]
+    assert m.reference_solver == SolverId.TABULAR_Q_LEARNING
+    m2 = EnvManifest.from_json_bytes(m.to_json_bytes())
+    assert m2.reference_solver == SolverId.TABULAR_Q_LEARNING
+
+
+def test_reference_solver_invalid_value_raises() -> None:
+    """A string that is not in SolverId raises ValidationError."""
+    data = _valid_manifest()
+    data["reference_solver"] = "bogus"  # type: ignore[assignment]
+    with pytest.raises(ValidationError):
+        EnvManifest(**data)  # type: ignore[arg-type]
 
 
 # --- Tests for anchor.n_steps <= max_episode_steps invariant (RT-001 F-005) ---

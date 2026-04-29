@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 
 import gymnasium as gym
 from pydantic import BaseModel
 
+from praxis.protocol.types import SolverId
 
-class SolverId(StrEnum):
-    TABULAR_Q_LEARNING = "tabular_q_learning"
+__all__ = ["EvalResult", "Solver", "SolverId"]
 
 
 class EvalResult(BaseModel):

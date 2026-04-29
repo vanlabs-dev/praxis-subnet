@@ -30,12 +30,13 @@ from praxis.protocol import (
     DifficultyBand,
     EnvManifest,
     RewardBounds,
+    SolverId,
     TrajectoryAnchor,
 )
 
 _ENTRY_POINT = "praxis.envs.gridworld:PraxisGridworld"
 _ENV_VERSION = "0.1.0"
-_PROTOCOL_VERSION = "0.2.0"
+_PROTOCOL_VERSION = "0.3.0"
 _ANCHOR_SEEDS = [1, 2, 3, 4]
 _N_STEPS = 200
 
@@ -112,6 +113,7 @@ def build_manifest(
         env_version=_ENV_VERSION,
         kwargs={"grid_size": grid_size},
         difficulty_band=difficulty_band,
+        reference_solver=SolverId.TABULAR_Q_LEARNING,
         max_episode_steps=max_episode_steps,
         declared_reward_bounds=_reward_bounds(grid_size),
         anchor_trajectories=anchors,

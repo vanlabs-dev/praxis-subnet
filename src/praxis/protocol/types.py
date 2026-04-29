@@ -14,6 +14,10 @@ class ActionPolicyId(StrEnum):
     SEEDED_RANDOM = "seeded_random"
 
 
+class SolverId(StrEnum):
+    TABULAR_Q_LEARNING = "tabular_q_learning"
+
+
 class RewardBounds(BaseModel):
     min_per_step: float
     max_per_step: float

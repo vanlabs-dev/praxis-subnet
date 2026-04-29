@@ -18,11 +18,11 @@ from praxis.checks.reward_bounds import (
     RewardBoundsReport,
     check_reward_bounds,
 )
-from praxis.protocol import DifficultyBand, EnvManifest, RewardBounds, TrajectoryAnchor
+from praxis.protocol import DifficultyBand, EnvManifest, RewardBounds, SolverId, TrajectoryAnchor
 from praxis.protocol.types import ActionPolicyId
 
 _ENTRY_POINT = "praxis.envs.gridworld:PraxisGridworld"
-_PROTOCOL_VERSION = "0.2.0"
+_PROTOCOL_VERSION = "0.3.0"
 _ENV_VERSION = "0.1.0"
 
 # 20x20 grid, but we cap max_episode_steps=10 so every random walk truncates.
@@ -49,6 +49,7 @@ def _manifest() -> EnvManifest:
         env_version=_ENV_VERSION,
         kwargs={"grid_size": _GRID_SIZE},
         difficulty_band=DifficultyBand.HARD,
+        reference_solver=SolverId.TABULAR_Q_LEARNING,
         max_episode_steps=_MAX_EPISODE_STEPS,
         declared_reward_bounds=RewardBounds(
             min_per_step=-0.01,
