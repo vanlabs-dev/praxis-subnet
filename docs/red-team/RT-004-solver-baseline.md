@@ -184,6 +184,9 @@ collapse that surface to near zero.
   some band-specific upper limit, and `passed = solver_norm >=
   threshold AND random_norm <= upper_random_limit`. Today the warning
   exists; the validator just does not act on it.
+- Resolution: CLOSED in Phase 1 fix-pass at commit 7ec7c29.
+- Mechanism: uniform threshold T=0.5 across all three bands plus promotion of the random-policy floor to a hard failure across all bands. Declaring HARD instead of EASY no longer lowers the threshold; bands differ only in training budget. Random baseline clearing the threshold now flips passed=False with failure_reason="trivial_random_baseline" (or "both" if the solver also fails).
+- Residual gap: declaring HARD on an actually-MEDIUM env to obtain 100K training budget instead of 30K still passes if the solver crosses 0.5 only at the higher budget. Documented as Phase 2 work under Option D (two-budget compute verification: train at the declared band's budget AND at the next-easier band's budget; pass requires the easier-band run to be below threshold).
 
 ### A-303: TabularQLearning is fully public; env precomputes its argmax actions
 - Category: validator detection (cross-cut from RT-001 F-002)
@@ -790,7 +793,7 @@ F-010 (F-026, manifest-tuple seed brute force at two new salts).
 | ID | Severity | Summary | Linked attack |
 |----|----------|---------|---------------|
 | F-020 | HIGH | declared_reward_bounds is creator-controlled and feeds the normalization divisor; tight bounds make any in-bounds raw return normalize near 1.0, vacuous bounds make normalization meaningless. | A-301 |
-| F-021 | CRITICAL | difficulty_band is a free enum pick; declaring HARD instead of EASY drops the threshold from 0.7 to 0.1 with zero env change and earns at HARD-band emission rate. | A-302 |
+| F-021 | CRITICAL | difficulty_band is a free enum pick; declaring HARD instead of EASY drops the threshold from 0.7 to 0.1 with zero env change and earns at HARD-band emission rate. [CLOSED in commit 7ec7c29] | A-302 |
 | F-022 | HIGH | TabularQLearning is fully public and deterministic; env can simulate training and eval offline, recover argmax-greedy action sequences per derived eval seed, and fingerprint the validator. | A-303 |
 | F-023 | CRITICAL | manifest.reference_solver is creator-declared; today forced to TABULAR_Q_LEARNING, but Phase 2 PPO addition lets creators stay on the weaker solver they over-fit against. | A-304 |
 | F-024 | HIGH | trivial_random_warning is advisory (does not flip passed=False) and skips EASY-band envs; declaring EASY plus shipping a trivially solvable env passes silently with no warning. | A-305 |
