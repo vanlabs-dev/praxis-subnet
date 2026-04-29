@@ -9,8 +9,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from build_gridworld_manifest import build_easy_manifest  # type: ignore[import-not-found]
 
+from praxis.checks._rollout import EnvSpec
 from praxis.checks.determinism import (
-    EnvSpec,
     RolloutResult,
     check_determinism,
     rollout,

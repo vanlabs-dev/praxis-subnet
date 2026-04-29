@@ -6,16 +6,18 @@ trajectories when replayed with the same seed and canonical action policy.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from importlib import import_module
-from typing import Any, Protocol, runtime_checkable
+from dataclasses import dataclass
+from typing import Any
 
-import gymnasium as gym
-import numpy as np
-import numpy.typing as npt
-from gymnasium.wrappers import TimeLimit
 from pydantic import BaseModel
 
+from praxis.checks._rollout import (
+    POLICY_REGISTRY,
+    ActionPolicy,
+    EnvSpec,
+    SeededRandomPolicy,
+    iter_rollout,
+)
 from praxis.protocol import ActionPolicyId, EnvManifest, trajectory_hash
 
 __all__ = [
@@ -30,134 +32,10 @@ __all__ = [
     "check_determinism",
 ]
 
-
-@dataclass(frozen=True, slots=True)
-class EnvSpec:
-    """Immutable specification for loading an environment via importlib.
-
-    Attributes
-    ----------
-    entry_point:
-        Dotted module path and class name separated by a colon, e.g.
-        ``"praxis.envs.gridworld:PraxisGridworld"``.
-    kwargs:
-        Keyword arguments forwarded to the environment constructor.
-    max_episode_steps:
-        Maximum steps before the TimeLimit wrapper truncates the episode.
-        Callers are responsible for providing a sensible positive value.
-    """
-
-    entry_point: str
-    kwargs: dict[str, Any] = field(default_factory=dict)
-    max_episode_steps: int = 0
-
-
-def _load_env(spec: EnvSpec) -> gym.Env:  # type: ignore[type-arg]
-    """Resolve and instantiate an environment from an EnvSpec.
-
-    Imports the module, retrieves the class, instantiates it with spec.kwargs,
-    and wraps the result in a TimeLimit with spec.max_episode_steps.
-
-    Parameters
-    ----------
-    spec:
-        The EnvSpec describing how to load the environment.
-
-    Returns
-    -------
-    gym.Env
-        A TimeLimit-wrapped environment instance.
-
-    Raises
-    ------
-    ValueError
-        If entry_point does not contain a colon separator.
-    ImportError
-        If the module path cannot be imported.
-    AttributeError
-        If the class name does not exist on the imported module.
-    TypeError
-        If the resolved attribute is not callable.
-    """
-    if ":" not in spec.entry_point:
-        raise ValueError(
-            f"entry_point must be of the form 'module.path:ClassName', got {spec.entry_point!r}"
-        )
-    module_path, class_name = spec.entry_point.split(":", 1)
-    module = import_module(module_path)  # raises ImportError on failure
-    env_cls = getattr(module, class_name)  # raises AttributeError on missing attr
-    if not callable(env_cls):
-        raise TypeError(
-            f"entry_point {spec.entry_point!r} did not resolve to a callable,"
-            f" got {type(env_cls).__name__}"
-        )
-    env = env_cls(**spec.kwargs)
-    return TimeLimit(env, max_episode_steps=spec.max_episode_steps)
-
-
-@runtime_checkable
-class ActionPolicy(Protocol):
-    """Protocol for action-generation policies used by the determinism check.
-
-    Implementations must be stateless and produce a deterministic action
-    sequence given only (seed, n_steps, action_space). The seed must fully
-    determine the sequence -- no hidden state.
-    """
-
-    def actions(
-        self,
-        seed: int,
-        n_steps: int,
-        action_space: gym.Space,  # type: ignore[type-arg]
-    ) -> npt.NDArray[np.int64]:
-        """Return an array of n_steps actions drawn from action_space."""
-        ...
-
-
-class SeededRandomPolicy:
-    """Canonical PCG64-seeded uniform-random policy for Discrete action spaces.
-
-    Uses np.random.Generator(np.random.PCG64(seed)) so that action sequences
-    are independent of gymnasium internals and stable across gymnasium version
-    bumps.
-
-    Phase 1 restriction: only Discrete action spaces are supported.
-    """
-
-    def actions(
-        self,
-        seed: int,
-        n_steps: int,
-        action_space: gym.Space,  # type: ignore[type-arg]
-    ) -> npt.NDArray[np.int64]:
-        """Return n_steps actions sampled uniformly from a Discrete space.
-
-        Parameters
-        ----------
-        seed:
-            RNG seed. Must fully determine the returned sequence.
-        n_steps:
-            Number of actions to generate. Precomputed in full so that action
-            generation is decoupled from environment stepping.
-        action_space:
-            Must be a Discrete space. Any other type raises NotImplementedError.
-
-        Raises
-        ------
-        NotImplementedError
-            If action_space is not a gymnasium.spaces.Discrete instance.
-        """
-        if not isinstance(action_space, gym.spaces.Discrete):
-            raise NotImplementedError(
-                "SEEDED_RANDOM Phase 1 supports only Discrete action spaces"
-            )
-        rng = np.random.Generator(np.random.PCG64(seed))
-        return rng.integers(low=0, high=int(action_space.n), size=n_steps, dtype=np.int64)
-
-
-POLICY_REGISTRY: dict[ActionPolicyId, ActionPolicy] = {
-    ActionPolicyId.SEEDED_RANDOM: SeededRandomPolicy(),
-}
+# Re-export so that existing callers (scripts/build_gridworld_manifest.py and
+# any downstream consumers) can continue to import these names from
+# praxis.checks.determinism without modification.
+__all__ += []  # names already listed above
 
 
 @dataclass(frozen=True)
@@ -230,44 +108,27 @@ def rollout(
     NotImplementedError
         If the action policy does not support the environment's action space.
     """
-    policy = POLICY_REGISTRY[action_policy]
+    obs0, it = iter_rollout(env_spec, seed, action_policy, n_steps)
 
-    env = _load_env(env_spec)
-    try:
-        # Precompute actions up front to decouple generation from stepping.
-        action_seq = policy.actions(seed=seed, n_steps=n_steps, action_space=env.action_space)
+    observations: list[Any] = [obs0]
+    actions: list[int] = []
+    rewards: list[float] = []
+    terminations: list[bool] = []
+    truncations: list[bool] = []
+    terminated_early = False
+    truncated_early = False
 
-        obs0, _info0 = env.reset(seed=seed)
+    for record in it:
+        observations.append(record.obs)
+        actions.append(record.action)
+        rewards.append(record.reward)
+        terminations.append(record.terminated)
+        truncations.append(record.truncated)
+        if record.terminated:
+            terminated_early = True
+        if record.truncated:
+            truncated_early = True
 
-        observations: list[object] = [obs0]
-        actions: list[int] = []
-        rewards: list[float] = []
-        terminations: list[bool] = []
-        truncations: list[bool] = []
-
-        terminated_early = False
-        truncated_early = False
-
-        for t in range(n_steps):
-            action = int(action_seq[t])
-            obs, reward, terminated, truncated, _info = env.step(action)
-
-            observations.append(obs)
-            actions.append(action)
-            rewards.append(float(reward))
-            terminations.append(bool(terminated))
-            truncations.append(bool(truncated))
-
-            if terminated:
-                terminated_early = True
-                break
-            if truncated:
-                truncated_early = True
-                break
-    finally:
-        env.close()
-
-    actual_steps = len(actions)
     computed = trajectory_hash(
         observations=observations,
         actions=actions,
@@ -280,7 +141,7 @@ def rollout(
 
     return RolloutResult(
         computed_hash=computed,
-        actual_steps=actual_steps,
+        actual_steps=len(actions),
         terminated_early=terminated_early,
         truncated_early=truncated_early,
     )

@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from gymnasium.wrappers import TimeLimit
 
-from praxis.checks.determinism import EnvSpec, _load_env
+from praxis.checks._rollout import EnvSpec, _load_env
 from praxis.envs.gridworld import PraxisGridworld
 
 

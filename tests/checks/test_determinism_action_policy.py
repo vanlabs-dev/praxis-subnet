@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from gymnasium.spaces import Box, Discrete
 
-from praxis.checks.determinism import ActionPolicy, SeededRandomPolicy
+from praxis.checks._rollout import ActionPolicy, SeededRandomPolicy
 
 
 def test_same_seed_returns_identical_arrays() -> None:

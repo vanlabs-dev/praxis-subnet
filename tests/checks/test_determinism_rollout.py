@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 
-from praxis.checks.determinism import EnvSpec, RolloutResult, rollout
+from praxis.checks._rollout import EnvSpec
+from praxis.checks.determinism import RolloutResult, rollout
 from praxis.protocol import ActionPolicyId
 
 _HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
