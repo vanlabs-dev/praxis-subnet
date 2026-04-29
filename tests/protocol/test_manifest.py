@@ -194,3 +194,65 @@ def test_protocol_version_020_required() -> None:
     data["protocol_version"] = "0.2.0"
     m = EnvManifest(**data)  # type: ignore[arg-type]
     assert m.protocol_version == "0.2.0"
+
+
+# --- Tests for anchor.n_steps <= max_episode_steps invariant (RT-001 F-005) ---
+
+
+def _make_anchors(n_steps: int, count: int = 4, start_seed: int = 0) -> list[TrajectoryAnchor]:
+    return [
+        TrajectoryAnchor(
+            seed=start_seed + i,
+            action_policy=ActionPolicyId.SEEDED_RANDOM,
+            n_steps=n_steps,
+            expected_hash=_FAKE_HASH,
+        )
+        for i in range(count)
+    ]
+
+
+def test_anchor_n_steps_equal_max_episode_steps_ok() -> None:
+    """Anchors with n_steps == max_episode_steps must not raise."""
+    data = _valid_manifest()
+    data["max_episode_steps"] = 100
+    data["anchor_trajectories"] = _make_anchors(n_steps=100)
+    m = EnvManifest(**data)  # type: ignore[arg-type]
+    assert m.max_episode_steps == 100
+
+
+def test_anchor_n_steps_below_max_episode_steps_ok() -> None:
+    """Anchors with n_steps == max_episode_steps - 1 must not raise."""
+    data = _valid_manifest()
+    data["max_episode_steps"] = 100
+    data["anchor_trajectories"] = _make_anchors(n_steps=99)
+    m = EnvManifest(**data)  # type: ignore[arg-type]
+    assert m.max_episode_steps == 100
+
+
+def test_anchor_n_steps_exceeds_max_episode_steps_raises() -> None:
+    """A single offending anchor must raise ValidationError naming its seed."""
+    data = _valid_manifest()
+    data["max_episode_steps"] = 50
+    # Seeds 0-2 are fine; seed 42 offends.
+    offending = TrajectoryAnchor(
+        seed=42,
+        action_policy=ActionPolicyId.SEEDED_RANDOM,
+        n_steps=200,
+        expected_hash=_FAKE_HASH,
+    )
+    data["anchor_trajectories"] = _make_anchors(n_steps=10, count=3) + [offending]
+    with pytest.raises(ValidationError) as exc_info:
+        EnvManifest(**data)  # type: ignore[arg-type]
+    assert "seed=42" in str(exc_info.value)
+
+
+def test_multiple_offending_anchors_first_one_named() -> None:
+    """When multiple anchors offend, the error must name at least the first one."""
+    data = _valid_manifest()
+    data["max_episode_steps"] = 50
+    # Build 4 anchors that all offend; seeds 0, 1, 2, 3.
+    data["anchor_trajectories"] = _make_anchors(n_steps=100, count=4, start_seed=0)
+    with pytest.raises(ValidationError) as exc_info:
+        EnvManifest(**data)  # type: ignore[arg-type]
+    # The validator raises on the first violating anchor (seed=0).
+    assert "seed=0" in str(exc_info.value)

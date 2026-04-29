@@ -119,11 +119,16 @@ def build_manifest(
 
 
 def build_easy_manifest() -> EnvManifest:
-    """Build a manifest for the easy (5x5) gridworld band."""
+    """Build a manifest for the easy (5x5) gridworld band.
+
+    n_steps=100 matches max_episode_steps=4*5*5=100 so the invariant
+    anchor.n_steps <= max_episode_steps holds (RT-001 F-005).
+    """
     return build_manifest(
         env_id="praxis-gridworld-easy",
         difficulty_band=DifficultyBand.EASY,
         grid_size=5,
+        n_steps=100,
     )
 
 

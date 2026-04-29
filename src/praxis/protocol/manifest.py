@@ -60,6 +60,17 @@ class EnvManifest(BaseModel):
             seen.add(key)
         return self
 
+    @model_validator(mode="after")
+    def _anchor_steps_must_fit_episode_budget(self) -> Self:
+        for anchor in self.anchor_trajectories:
+            if anchor.n_steps > self.max_episode_steps:
+                raise ValueError(
+                    "anchor n_steps must not exceed max_episode_steps; "
+                    f"anchor seed={anchor.seed} declares n_steps={anchor.n_steps} "
+                    f"but max_episode_steps={self.max_episode_steps}"
+                )
+        return self
+
     def to_json_bytes(self) -> bytes:
         return self.model_dump_json().encode("utf-8")
 
