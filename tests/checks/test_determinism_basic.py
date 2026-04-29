@@ -2,33 +2,32 @@
 
 from __future__ import annotations
 
-import praxis.envs  # noqa: F401 -- ensure env registrations are loaded
+import sys
+from pathlib import Path
+
+# Allow importing build helpers from scripts/ directly.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+from build_gridworld_manifest import build_easy_manifest  # type: ignore[import-not-found]
 
 from praxis.checks.determinism import (
+    EnvSpec,
     RolloutResult,
     check_determinism,
     rollout,
 )
 from praxis.protocol import (
     ActionPolicyId,
-    DifficultyBand,
-    EnvManifest,
-    RewardBounds,
     TrajectoryAnchor,
 )
 
-_ENV_ID = "praxisgridworld-easy-v0"
-_N_STEPS = 50
+_N_STEPS = 200
 _SEEDS = [1, 2, 3, 4]
 
-# Realistic reward bounds for the 5x5 gridworld:
-#   per-step: [-0.01, 0.99]  (step penalty + optional goal bonus)
-#   per-episode: [-0.01 * 100, 0.99]  (100 = 4 * 5^2 max steps)
-_BOUNDS = RewardBounds(
-    min_per_step=-0.01,
-    max_per_step=0.99,
-    min_per_episode=-1.0,
-    max_per_episode=0.99,
+# EnvSpec for the easy (5x5) gridworld.
+_EASY_SPEC = EnvSpec(
+    entry_point="praxis.envs.gridworld:PraxisGridworld",
+    kwargs={"grid_size": 5},
+    max_episode_steps=100,
 )
 
 
@@ -37,7 +36,7 @@ def _compute_anchors(seeds: list[int], corrupt_index: int | None = None) -> list
     anchors: list[TrajectoryAnchor] = []
     for i, seed in enumerate(seeds):
         result: RolloutResult = rollout(
-            env_id=_ENV_ID,
+            env_spec=_EASY_SPEC,
             seed=seed,
             action_policy=ActionPolicyId.SEEDED_RANDOM,
             n_steps=_N_STEPS,
@@ -57,22 +56,9 @@ def _compute_anchors(seeds: list[int], corrupt_index: int | None = None) -> list
     return anchors
 
 
-def _build_manifest(anchors: list[TrajectoryAnchor]) -> EnvManifest:
-    return EnvManifest(
-        protocol_version="0.1.0",
-        env_id=_ENV_ID,
-        entry_point="praxis.envs.gridworld:PraxisGridworld",
-        difficulty_band=DifficultyBand.EASY,
-        max_episode_steps=100,
-        declared_reward_bounds=_BOUNDS,
-        anchor_trajectories=anchors,
-    )
-
-
 def test_all_anchors_pass_with_correct_hashes() -> None:
     """All correct hashes produce passed=True and all anchors matched."""
-    anchors = _compute_anchors(_SEEDS)
-    manifest = _build_manifest(anchors)
+    manifest = build_easy_manifest()
     report = check_determinism(manifest)
 
     assert report.passed is True
@@ -87,8 +73,12 @@ def test_one_corrupted_anchor_fails() -> None:
     """One corrupted hash causes passed=False with exactly one mismatch."""
     corrupt_index = 2  # corrupt the third anchor
     anchors = _compute_anchors(_SEEDS, corrupt_index=corrupt_index)
-    manifest = _build_manifest(anchors)
-    report = check_determinism(manifest)
+    manifest = build_easy_manifest()
+    # Replace anchors with one corrupted entry.
+    manifest_with_corrupt = manifest.model_copy(
+        update={"anchor_trajectories": anchors}
+    )
+    report = check_determinism(manifest_with_corrupt)
 
     assert report.passed is False
     assert report.matched_count == len(_SEEDS) - 1
@@ -105,7 +95,6 @@ def test_one_corrupted_anchor_fails() -> None:
 
 def test_all_corrupted_anchors_fail() -> None:
     """All corrupted hashes cause passed=False with matched_count=0."""
-    # Build anchors with all declared hashes set to zeros.
     real_anchors = _compute_anchors(_SEEDS)
     corrupt_anchors = [
         TrajectoryAnchor(
@@ -116,8 +105,11 @@ def test_all_corrupted_anchors_fail() -> None:
         )
         for anchor in real_anchors
     ]
-    manifest = _build_manifest(corrupt_anchors)
-    report = check_determinism(manifest)
+    manifest = build_easy_manifest()
+    manifest_with_corrupt = manifest.model_copy(
+        update={"anchor_trajectories": corrupt_anchors}
+    )
+    report = check_determinism(manifest_with_corrupt)
 
     assert report.passed is False
     assert report.matched_count == 0

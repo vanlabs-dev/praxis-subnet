@@ -4,19 +4,23 @@ from __future__ import annotations
 
 import re
 
-import praxis.envs  # noqa: F401 -- ensure env registrations are loaded
-
-from praxis.checks.determinism import RolloutResult, rollout
+from praxis.checks.determinism import EnvSpec, RolloutResult, rollout
 from praxis.protocol import ActionPolicyId
 
-_ENV_ID = "praxisgridworld-easy-v0"
 _HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+
+# EnvSpec for the easy (5x5) gridworld -- no gym registration required.
+_EASY_SPEC = EnvSpec(
+    entry_point="praxis.envs.gridworld:PraxisGridworld",
+    kwargs={"grid_size": 5},
+    max_episode_steps=100,
+)
 
 
 def test_rollout_returns_valid_hash() -> None:
     """rollout produces a 64-char lowercase hex hash."""
     result: RolloutResult = rollout(
-        env_id=_ENV_ID,
+        env_spec=_EASY_SPEC,
         seed=42,
         action_policy=ActionPolicyId.SEEDED_RANDOM,
         n_steps=200,
@@ -28,7 +32,7 @@ def test_rollout_returns_valid_hash() -> None:
 def test_rollout_is_deterministic() -> None:
     """Two rollouts with identical arguments produce the same hash."""
     kwargs = dict(
-        env_id=_ENV_ID,
+        env_spec=_EASY_SPEC,
         seed=42,
         action_policy=ActionPolicyId.SEEDED_RANDOM,
         n_steps=200,
@@ -44,12 +48,11 @@ def test_rollout_is_deterministic() -> None:
 def test_rollout_early_stop_with_large_n_steps() -> None:
     """With large n_steps, the episode terminates or truncates before completion.
 
-    The 5x5 gridworld has max_episode_steps = 4 * 25 = 100. A random walk
-    will always stop at or before 100 steps, so n_steps=10_000 guarantees
-    early stopping.
+    The 5x5 gridworld with max_episode_steps=100 will always stop at or
+    before 100 steps, so n_steps=10_000 guarantees early stopping.
     """
     result: RolloutResult = rollout(
-        env_id=_ENV_ID,
+        env_spec=_EASY_SPEC,
         seed=0,
         action_policy=ActionPolicyId.SEEDED_RANDOM,
         n_steps=10_000,
@@ -61,13 +64,13 @@ def test_rollout_early_stop_with_large_n_steps() -> None:
 def test_rollout_different_seeds_produce_different_hashes() -> None:
     """Different seeds lead to different trajectories and different hashes."""
     r1: RolloutResult = rollout(
-        env_id=_ENV_ID,
+        env_spec=_EASY_SPEC,
         seed=100,
         action_policy=ActionPolicyId.SEEDED_RANDOM,
         n_steps=50,
     )
     r2: RolloutResult = rollout(
-        env_id=_ENV_ID,
+        env_spec=_EASY_SPEC,
         seed=200,
         action_policy=ActionPolicyId.SEEDED_RANDOM,
         n_steps=50,
@@ -80,7 +83,7 @@ def test_rollout_different_seeds_produce_different_hashes() -> None:
 def test_rollout_result_is_frozen() -> None:
     """RolloutResult is immutable (frozen dataclass)."""
     result: RolloutResult = rollout(
-        env_id=_ENV_ID,
+        env_spec=_EASY_SPEC,
         seed=1,
         action_policy=ActionPolicyId.SEEDED_RANDOM,
         n_steps=20,

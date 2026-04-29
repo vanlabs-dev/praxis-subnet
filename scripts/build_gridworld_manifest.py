@@ -1,29 +1,30 @@
 """Utility script: build a valid EnvManifest for the three gridworld bands.
 
 Computes real trajectory hashes via rollout() and prints the resulting
-manifest JSON to stdout. This is a fixture-builder / CLI utility -- it is
-NOT part of the public praxis API.
+manifest JSON to stdout. This is a fixture-builder / CLI utility.
 
 Usage:
     uv run python scripts/build_gridworld_manifest.py
 
 Output:
     One JSON manifest per gridworld band, printed to stdout.
+
+Importable API (used by tests):
+    build_easy_manifest()
+    build_medium_manifest()
+    build_hard_manifest()
 """
 
 from __future__ import annotations
 
 import json
 import sys
-
-# Ensure src/ is on the path when run as a script outside the installed package.
 from pathlib import Path
 
+# Ensure src/ is on the path when run as a script outside the installed package.
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-import praxis.envs  # noqa: F401 -- register gymnasium environments
-
-from praxis.checks.determinism import rollout
+from praxis.checks.determinism import EnvSpec, rollout
 from praxis.protocol import (
     ActionPolicyId,
     DifficultyBand,
@@ -32,14 +33,11 @@ from praxis.protocol import (
     TrajectoryAnchor,
 )
 
-# (lowercase_env_id, difficulty_band, grid_size, n_steps_per_anchor)
-_BANDS: list[tuple[str, DifficultyBand, int, int]] = [
-    ("praxisgridworld-easy-v0", DifficultyBand.EASY, 5, 50),
-    ("praxisgridworld-medium-v0", DifficultyBand.MEDIUM, 10, 100),
-    ("praxisgridworld-hard-v0", DifficultyBand.HARD, 20, 200),
-]
-
+_ENTRY_POINT = "praxis.envs.gridworld:PraxisGridworld"
+_ENV_VERSION = "0.1.0"
+_PROTOCOL_VERSION = "0.2.0"
 _ANCHOR_SEEDS = [1, 2, 3, 4]
+_N_STEPS = 200
 
 
 def _reward_bounds(grid_size: int) -> RewardBounds:
@@ -62,17 +60,38 @@ def build_manifest(
     env_id: str,
     difficulty_band: DifficultyBand,
     grid_size: int,
-    n_steps: int,
+    n_steps: int = _N_STEPS,
     seeds: list[int] | None = None,
 ) -> EnvManifest:
-    """Compute hashes and return a valid EnvManifest for the given band."""
+    """Compute hashes and return a valid EnvManifest for the given band.
+
+    Parameters
+    ----------
+    env_id:
+        Slug-form env ID, e.g. ``"praxis-gridworld-easy"``.
+    difficulty_band:
+        DifficultyBand enum value.
+    grid_size:
+        Side length of the gridworld.
+    n_steps:
+        Steps per anchor rollout.
+    seeds:
+        Seeds to use for anchor generation. Defaults to [1, 2, 3, 4].
+    """
     if seeds is None:
         seeds = _ANCHOR_SEEDS
+
+    max_episode_steps = 4 * grid_size * grid_size
+    env_spec = EnvSpec(
+        entry_point=_ENTRY_POINT,
+        kwargs={"grid_size": grid_size},
+        max_episode_steps=max_episode_steps,
+    )
 
     anchors: list[TrajectoryAnchor] = []
     for seed in seeds:
         result = rollout(
-            env_id=env_id,
+            env_spec=env_spec,
             seed=seed,
             action_policy=ActionPolicyId.SEEDED_RANDOM,
             n_steps=n_steps,
@@ -87,24 +106,52 @@ def build_manifest(
         )
 
     return EnvManifest(
-        protocol_version="0.1.0",
+        protocol_version=_PROTOCOL_VERSION,
         env_id=env_id,
-        entry_point="praxis.envs.gridworld:PraxisGridworld",
+        entry_point=_ENTRY_POINT,
+        env_version=_ENV_VERSION,
+        kwargs={"grid_size": grid_size},
         difficulty_band=difficulty_band,
-        max_episode_steps=4 * grid_size * grid_size,
+        max_episode_steps=max_episode_steps,
         declared_reward_bounds=_reward_bounds(grid_size),
         anchor_trajectories=anchors,
     )
 
 
+def build_easy_manifest() -> EnvManifest:
+    """Build a manifest for the easy (5x5) gridworld band."""
+    return build_manifest(
+        env_id="praxis-gridworld-easy",
+        difficulty_band=DifficultyBand.EASY,
+        grid_size=5,
+    )
+
+
+def build_medium_manifest() -> EnvManifest:
+    """Build a manifest for the medium (10x10) gridworld band."""
+    return build_manifest(
+        env_id="praxis-gridworld-medium",
+        difficulty_band=DifficultyBand.MEDIUM,
+        grid_size=10,
+    )
+
+
+def build_hard_manifest() -> EnvManifest:
+    """Build a manifest for the hard (20x20) gridworld band."""
+    return build_manifest(
+        env_id="praxis-gridworld-hard",
+        difficulty_band=DifficultyBand.HARD,
+        grid_size=20,
+    )
+
+
 if __name__ == "__main__":
-    for env_id, band, grid_size, n_steps in _BANDS:
-        manifest = build_manifest(
-            env_id=env_id,
-            difficulty_band=band,
-            grid_size=grid_size,
-            n_steps=n_steps,
-        )
-        print(f"# {env_id}")
+    for builder, label in [
+        (build_easy_manifest, "praxis-gridworld-easy"),
+        (build_medium_manifest, "praxis-gridworld-medium"),
+        (build_hard_manifest, "praxis-gridworld-hard"),
+    ]:
+        manifest = builder()
+        print(f"# {label}")
         print(json.dumps(json.loads(manifest.model_dump_json()), indent=2))
         print()

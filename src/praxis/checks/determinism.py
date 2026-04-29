@@ -1,22 +1,25 @@
 """Determinism check for Praxis validator.
 
-Verifies that a registered gymnasium environment produces bit-identical
+Verifies that an environment produced via importlib resolves to bit-identical
 trajectories when replayed with the same seed and canonical action policy.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from dataclasses import dataclass, field
+from importlib import import_module
+from typing import Any, Protocol, runtime_checkable
 
 import gymnasium as gym
 import numpy as np
 import numpy.typing as npt
+from gymnasium.wrappers import TimeLimit
 from pydantic import BaseModel
 
 from praxis.protocol import ActionPolicyId, EnvManifest, trajectory_hash
 
 __all__ = [
+    "EnvSpec",
     "ActionPolicy",
     "SeededRandomPolicy",
     "POLICY_REGISTRY",
@@ -26,6 +29,70 @@ __all__ = [
     "DeterminismReport",
     "check_determinism",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class EnvSpec:
+    """Immutable specification for loading an environment via importlib.
+
+    Attributes
+    ----------
+    entry_point:
+        Dotted module path and class name separated by a colon, e.g.
+        ``"praxis.envs.gridworld:PraxisGridworld"``.
+    kwargs:
+        Keyword arguments forwarded to the environment constructor.
+    max_episode_steps:
+        Maximum steps before the TimeLimit wrapper truncates the episode.
+        Callers are responsible for providing a sensible positive value.
+    """
+
+    entry_point: str
+    kwargs: dict[str, Any] = field(default_factory=dict)
+    max_episode_steps: int = 0
+
+
+def _load_env(spec: EnvSpec) -> gym.Env:  # type: ignore[type-arg]
+    """Resolve and instantiate an environment from an EnvSpec.
+
+    Imports the module, retrieves the class, instantiates it with spec.kwargs,
+    and wraps the result in a TimeLimit with spec.max_episode_steps.
+
+    Parameters
+    ----------
+    spec:
+        The EnvSpec describing how to load the environment.
+
+    Returns
+    -------
+    gym.Env
+        A TimeLimit-wrapped environment instance.
+
+    Raises
+    ------
+    ValueError
+        If entry_point does not contain a colon separator.
+    ImportError
+        If the module path cannot be imported.
+    AttributeError
+        If the class name does not exist on the imported module.
+    TypeError
+        If the resolved attribute is not callable.
+    """
+    if ":" not in spec.entry_point:
+        raise ValueError(
+            f"entry_point must be of the form 'module.path:ClassName', got {spec.entry_point!r}"
+        )
+    module_path, class_name = spec.entry_point.split(":", 1)
+    module = import_module(module_path)  # raises ImportError on failure
+    env_cls = getattr(module, class_name)  # raises AttributeError on missing attr
+    if not callable(env_cls):
+        raise TypeError(
+            f"entry_point {spec.entry_point!r} did not resolve to a callable,"
+            f" got {type(env_cls).__name__}"
+        )
+    env = env_cls(**spec.kwargs)
+    return TimeLimit(env, max_episode_steps=spec.max_episode_steps)
 
 
 @runtime_checkable
@@ -118,7 +185,7 @@ class RolloutResult:
 
 
 def rollout(
-    env_id: str,
+    env_spec: EnvSpec,
     seed: int,
     action_policy: ActionPolicyId,
     n_steps: int,
@@ -127,7 +194,7 @@ def rollout(
 
     Implements the canonical Praxis rollout protocol:
 
-    1. Make the environment via gym.make(env_id).
+    1. Load the environment via _load_env(env_spec) (importlib, no gym.make).
     2. Precompute the full action sequence using the specified policy.
     3. Call env.reset(seed=seed). The initial observation obs0 is included
        in the observations sequence, so len(observations) == actual_steps + 1,
@@ -140,9 +207,9 @@ def rollout(
 
     Parameters
     ----------
-    env_id:
-        Registered gymnasium environment ID. praxis.envs is imported to ensure
-        Praxis environments are registered before gym.make is called.
+    env_spec:
+        Specification for loading the environment. Must have a valid
+        entry_point of the form 'module.path:ClassName'.
     seed:
         Seed forwarded to env.reset(seed=seed) and to the action policy.
     action_policy:
@@ -163,13 +230,9 @@ def rollout(
     NotImplementedError
         If the action policy does not support the environment's action space.
     """
-    # Import here to guarantee env registrations are loaded regardless of
-    # import order in the calling process.
-    import praxis.envs  # noqa: F401
-
     policy = POLICY_REGISTRY[action_policy]
 
-    env = gym.make(env_id)
+    env = _load_env(env_spec)
     try:
         # Precompute actions up front to decouple generation from stepping.
         action_seq = policy.actions(seed=seed, n_steps=n_steps, action_space=env.action_space)
@@ -259,7 +322,7 @@ class DeterminismReport(BaseModel):
     Attributes
     ----------
     env_id:
-        The gymnasium environment ID that was checked.
+        The environment ID from the manifest that was checked.
     passed:
         True iff every anchor hash matched (strict pass/fail).
     anchor_count:
@@ -288,21 +351,25 @@ def check_determinism(manifest: EnvManifest) -> DeterminismReport:
     ----------
     manifest:
         A validated EnvManifest whose anchor_trajectories list all anchors to
-        check. praxis.envs is imported to ensure env registrations are loaded.
+        check. The environment is loaded via importlib using manifest.entry_point
+        and manifest.kwargs -- gym.make is not used.
 
     Returns
     -------
     DeterminismReport
         Strict pass/fail result with per-anchor diagnostics.
     """
-    # Ensure Praxis env registrations are loaded.
-    import praxis.envs  # noqa: F401
+    env_spec = EnvSpec(
+        entry_point=manifest.entry_point,
+        kwargs=dict(manifest.kwargs),
+        max_episode_steps=manifest.max_episode_steps,
+    )
 
     anchor_results: list[AnchorResult] = []
 
     for anchor in manifest.anchor_trajectories:
         result = rollout(
-            env_id=manifest.env_id,
+            env_spec=env_spec,
             seed=anchor.seed,
             action_policy=anchor.action_policy,
             n_steps=anchor.n_steps,
