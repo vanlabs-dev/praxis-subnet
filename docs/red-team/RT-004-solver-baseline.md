@@ -314,6 +314,10 @@ collapse that surface to near zero.
   `reference_solver` is not the per-band default the validator
   prefers, so the field is reserved for future use without granting
   creator dispatch power today.
+- Resolution: CLOSED in Phase 1 fix-pass at commit 0fc4eb5.
+- Mechanism: validator iterates SOLVER_REGISTRY in insertion order, runs all applicable solvers (those whose train() does not raise NotImplementedError on the env), and conjunctively aggregates results. Pass requires (>=1 applicable) AND (all applicable pass). manifest.reference_solver is now inert; the field is preserved in EnvManifest for forward-compatibility but the validator does not honor the creator's solver pick. SolverBaselineReport gains a per-solver results dict (solver_results: dict[SolverId, PerSolverResult]); top-level fields point at the first applicable solver's result for backward-compat surface. New aggregate failure_reason value "no_compatible_solver" handles the case where SOLVER_REGISTRY has zero applicable entries.
+- Phase 2 invariant test: tests/checks/test_solver_baseline_f023.py exercises conjunctive aggregation today via injected mock solvers, ensuring the contract holds when PPO joins SOLVER_REGISTRY in Phase 2.
+- Residual gap: the manifest.reference_solver field's continued presence could mislead future readers into believing it is honored. Phase 2 may either remove the field (protocol bump) or repurpose it as a creator's compatibility hint subject to bonded constraints (the creator's hint must be a SUBSET of the validator's selected set, never a substitute for it).
 
 ### A-305: trivial_random_warning is advisory; EASY-band envs bypass entirely
 - Category: warning-not-fail / band exemption
@@ -795,7 +799,7 @@ F-010 (F-026, manifest-tuple seed brute force at two new salts).
 | F-020 | HIGH | declared_reward_bounds is creator-controlled and feeds the normalization divisor; tight bounds make any in-bounds raw return normalize near 1.0, vacuous bounds make normalization meaningless. | A-301 |
 | F-021 | CRITICAL | difficulty_band is a free enum pick; declaring HARD instead of EASY drops the threshold from 0.7 to 0.1 with zero env change and earns at HARD-band emission rate. [CLOSED in commit 7ec7c29] | A-302 |
 | F-022 | HIGH | TabularQLearning is fully public and deterministic; env can simulate training and eval offline, recover argmax-greedy action sequences per derived eval seed, and fingerprint the validator. | A-303 |
-| F-023 | CRITICAL | manifest.reference_solver is creator-declared; today forced to TABULAR_Q_LEARNING, but Phase 2 PPO addition lets creators stay on the weaker solver they over-fit against. | A-304 |
+| F-023 | CRITICAL | manifest.reference_solver is creator-declared; today forced to TABULAR_Q_LEARNING, but Phase 2 PPO addition lets creators stay on the weaker solver they over-fit against. [CLOSED in commit 0fc4eb5] | A-304 |
 | F-024 | HIGH | trivial_random_warning is advisory (does not flip passed=False) and skips EASY-band envs; declaring EASY plus shipping a trivially solvable env passes silently with no warning. | A-305 |
 | F-025 | MEDIUM | Solver eval reseeds at seed+ep (contiguous progression) while random baseline reseeds at eval_seeds[i] (hash-derived); env can fingerprint the asymmetry and lie selectively. | A-306 |
 | F-026 | MEDIUM | derive_validator_seeds uses two new salts (b"solver_baseline", b"solver_baseline_eval"); brute-forcing the env-defining 4-tuple aligns 21 derived seeds with creator's honest predicate. | A-307 |
