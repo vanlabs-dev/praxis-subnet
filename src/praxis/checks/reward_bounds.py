@@ -252,7 +252,7 @@ def check_reward_bounds(
     samples: list[SeedSample] = []
 
     for seed in seeds:
-        _obs0, it = iter_rollout(env_spec, seed, config.action_policy, manifest.max_episode_steps)
+        _obs0, _info0, it = iter_rollout(env_spec, seed, config.action_policy, manifest.max_episode_steps)
 
         min_r = math.inf
         max_r = -math.inf

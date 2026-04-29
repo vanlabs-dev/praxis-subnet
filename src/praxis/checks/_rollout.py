@@ -7,7 +7,7 @@ that it is not part of any public API. Both ``determinism.py`` and
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from importlib import import_module
 from typing import Any, Protocol, runtime_checkable
@@ -192,6 +192,10 @@ class StepRecord:
         True if the episode reached a natural terminal state.
     truncated:
         True if the episode was cut off by a step-limit wrapper.
+    info:
+        Info dict returned by env.step(). Defaults to empty mapping.
+        Exposed so downstream checks can optionally include it in
+        trajectory hashes (see DeterminismConfig.hash_infos).
     """
 
     obs: Any
@@ -199,6 +203,7 @@ class StepRecord:
     reward: float
     terminated: bool
     truncated: bool
+    info: Mapping[str, Any] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -211,12 +216,13 @@ def iter_rollout(
     seed: int,
     action_policy: ActionPolicyId,
     n_steps: int,
-) -> tuple[npt.NDArray[Any], Iterator[StepRecord]]:
+) -> tuple[npt.NDArray[Any], Mapping[str, Any], Iterator[StepRecord]]:
     """Load an environment, reset it, and return an iterator over step records.
 
-    The function returns ``(obs0, iterator)`` where ``obs0`` is the initial
-    observation from env.reset() and ``iterator`` yields one StepRecord per
-    step until the episode ends or ``n_steps`` is exhausted.
+    The function returns ``(obs0, info_0, iterator)`` where ``obs0`` is the
+    initial observation from env.reset(), ``info_0`` is the info dict from
+    env.reset(), and ``iterator`` yields one StepRecord per step until the
+    episode ends or ``n_steps`` is exhausted.
 
     The iterator manages env lifecycle -- the environment is closed in a
     ``finally`` block when the generator is exhausted **or** garbage-collected.
@@ -239,10 +245,13 @@ def iter_rollout(
     -------
     obs0:
         Initial observation from env.reset(seed=seed).
+    info_0:
+        Info dict from env.reset(seed=seed).
     iterator:
         Yields StepRecord for each step taken. The last record will have
         terminated=True or truncated=True (or both False if n_steps is
-        exhausted without episode end).
+        exhausted without episode end). Each StepRecord.info carries the
+        info dict from the corresponding env.step() call.
 
     Raises
     ------
@@ -258,24 +267,26 @@ def iter_rollout(
     # from stepping (same convention as the original rollout() function).
     action_seq = policy.actions(seed=seed, n_steps=n_steps, action_space=env.action_space)
 
-    obs0_raw, _info0 = env.reset(seed=seed)
+    obs0_raw, info_0_raw = env.reset(seed=seed)
     obs0: npt.NDArray[Any] = obs0_raw
+    info_0: Mapping[str, Any] = info_0_raw if isinstance(info_0_raw, Mapping) else {}
 
     def _step_generator() -> Iterator[StepRecord]:
         try:
             for t in range(n_steps):
                 action = int(action_seq[t])
-                obs, reward, terminated, truncated, _info = env.step(action)
+                obs, reward, terminated, truncated, step_info = env.step(action)
                 yield StepRecord(
                     obs=obs,
                     action=action,
                     reward=float(reward),
                     terminated=bool(terminated),
                     truncated=bool(truncated),
+                    info=step_info if isinstance(step_info, Mapping) else {},
                 )
                 if terminated or truncated:
                     break
         finally:
             env.close()
 
-    return obs0, _step_generator()
+    return obs0, info_0, _step_generator()
