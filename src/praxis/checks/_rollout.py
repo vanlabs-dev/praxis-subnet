@@ -7,7 +7,9 @@ that it is not part of any public API. Both ``determinism.py`` and
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from importlib import import_module
 from typing import Any, Protocol, runtime_checkable
@@ -57,6 +59,53 @@ class EnvSpec:
     max_episode_steps: int = 0
 
 
+@contextmanager
+def _isolated_import_namespace() -> Iterator[None]:
+    """Snapshot sys.modules; on exit, remove any new entries and restore
+    overwritten ones.
+
+    Closes the cross-creator sys.modules contamination vector documented as
+    RT-005 finding F-032 (the in-process validator running multiple manifests
+    no longer leaks creator A's modules into creator B's environment).
+
+    Provides PARTIAL closure of RT-001 finding F-003 (importlib sandbox).
+    Does NOT close:
+        - C-extension state mutations (numpy global state, threading state,
+          GIL-released code).
+        - Monkey-patches of already-loaded modules (creator's
+          ``import numpy; numpy.array = malicious_func`` mutates the existing
+          numpy object; sys.modules still points at the same module).
+        - Filesystem or network side effects (file writes, network calls).
+        - Side effects from env_cls(**kwargs) other than sys.modules
+          mutations (e.g. os.environ writes).
+        - Step/close-time imports: imports performed inside env.step() or
+          env.close() happen AFTER the guard exits and persist into
+          sys.modules permanently. The guard scope is import-time and
+          construction-time only.
+        - sys.path mutations (not snapshotted).
+        - Gym env registry mutations (registry is a dict on the gym module,
+          mutated in place; benign for Praxis because DR-001 forbids
+          gym.make(), but unprotected in general).
+
+    Phase 2 subprocess isolation remains the proper full fix for the broader
+    importlib sandbox concern (RT-001 F-003).
+
+    Re-import semantics: under this guard, each _load_env call re-executes
+    the creator's module body (because the cleanup loop deletes sys.modules
+    entries from prior calls). Honest envs are unaffected (their module body
+    is idempotent); the per-call cost is microseconds for gridworld-sized
+    envs.
+    """
+    snapshot = sys.modules.copy()
+    try:
+        yield
+    finally:
+        added = set(sys.modules.keys()) - set(snapshot.keys())
+        for name in added:
+            del sys.modules[name]
+        sys.modules.update(snapshot)
+
+
 def _load_env(spec: EnvSpec) -> gym.Env[Any, Any]:
     """Resolve and instantiate an environment from an EnvSpec.
 
@@ -89,14 +138,15 @@ def _load_env(spec: EnvSpec) -> gym.Env[Any, Any]:
             f"entry_point must be of the form 'module.path:ClassName', got {spec.entry_point!r}"
         )
     module_path, class_name = spec.entry_point.split(":", 1)
-    module = import_module(module_path)  # raises ImportError on failure
-    env_cls = getattr(module, class_name)  # raises AttributeError on missing attr
-    if not callable(env_cls):
-        raise TypeError(
-            f"entry_point {spec.entry_point!r} did not resolve to a callable,"
-            f" got {type(env_cls).__name__}"
-        )
-    env = env_cls(**spec.kwargs)
+    with _isolated_import_namespace():
+        module = import_module(module_path)  # raises ImportError on failure
+        env_cls = getattr(module, class_name)  # raises AttributeError on missing attr
+        if not callable(env_cls):
+            raise TypeError(
+                f"entry_point {spec.entry_point!r} did not resolve to a callable,"
+                f" got {type(env_cls).__name__}"
+            )
+        env = env_cls(**spec.kwargs)
     return TimeLimit(env, max_episode_steps=spec.max_episode_steps)
 
 

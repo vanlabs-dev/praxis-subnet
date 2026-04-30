@@ -82,6 +82,17 @@ class _BaseTinyEnv(gym.Env):  # type: ignore[type-arg]
         pass
 
 
+class CrashOnInit(gym.Env):  # type: ignore[type-arg]
+    """Adversarial env that raises during construction.
+
+    Used by test_load_env_propagates_constructor_exceptions to verify the
+    sys.modules guard does not swallow constructor exceptions.
+    """
+
+    def __init__(self) -> None:
+        raise RuntimeError("construction failed")
+
+
 class LiarTupleShape(_BaseTinyEnv):
     """reset() returns a bare array instead of the required (obs, info) tuple."""
 
