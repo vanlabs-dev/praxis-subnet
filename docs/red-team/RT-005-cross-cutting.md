@@ -825,6 +825,10 @@ LOW). "Why missed" cites the specific lines that fail to defend.
   If unequal weighting is desired for diagnostic purposes
   (e.g. surface `which_check_failed` to the creator), the bond
   policy must still be all-or-nothing.
+- Resolution: CLOSED in Phase 1 fix-pass at commit ae5501b.
+- Mechanism: validator pipeline orchestration ships with run-all + conjunctive aggregation by-design. ValidatorReport.passed equals all(o.passed for o in check_results.values()): every sub-check must have outcome.passed=True for the overall verdict to pass. Any failed or errored sub-check fails the whole verdict. The operator gets every failure mode in a single report (run-all semantics) but the verdict aggregates strictly. This was the F-040 forward-looking concern: "if orchestration treats passed non-conjunctively." It does not.
+- Phase 1 invariant test: tests/orchestrator/test_runner_aggregation.py exercises the conjunctive rule explicitly via mock-injection. Five passing mocks pass overall; four-and-one configurations fail overall; all-failing configurations record five failure_summary entries; one mock raising RuntimeError is recorded as CheckErrored and counts as failure.
+- Residual: none specific to F-040. Note that F-031 (cross-cutting compositional creator-miner: env that exploits multiple checks each individually passing) is a deeper architectural concern not addressed by orchestration aggregation; F-031 stays DEFERRED CRITICAL pending Phase 2 architectural work.
 
 ## Loose threads
 
@@ -897,4 +901,4 @@ revisions.
 | F-037 | MEDIUM | protocol_version downgrade and silent acceptance: strict Literal closes today, but the bump-and-grandfather window is unspecified for Phase 2 cuts. | A-407 |
 | F-038 | HIGH | kwargs as a smuggling channel: dict[str, Any] feeds both seed derivation and runtime configuration, giving the attacker an unbounded entropy axis for joint seed alignment plus a manifest-derivable runtime secret. | A-408 |
 | F-039 | MEDIUM | Trust boundary disagreements between validator-engineer, rl-researcher, and env-architect sub-agents; aggregates per-check declaration-laziness findings into a structural observation. | A-409 |
-| F-040 | LOW | Inconsistent strictness across checks is engineerable into pass-everywhere-fail-cheapest IF the orchestration layer treats passed non-conjunctively; forward-looking, currently closed by absence of orchestration layer. | A-410 |
+| F-040 | LOW | Inconsistent strictness across checks is engineerable into pass-everywhere-fail-cheapest IF the orchestration layer treats passed non-conjunctively; forward-looking, currently closed by absence of orchestration layer. [CLOSED in commit ae5501b] | A-410 |
