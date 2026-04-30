@@ -354,6 +354,10 @@ LOW). "Why missed" cites the specific lines that fail to defend.
   check with a structured `IMPORTLIB_TAMPERING` violation and do
   NOT trust subsequent results. This is interim Phase 1 mitigation.
   Phase 2 fix is full subprocess isolation per env load.
+- Resolution: CLOSED in Phase 1 fix-pass at commit 56b9b28.
+- Mechanism: nose-style sys.modules.copy() snapshot guard wraps the import_module + getattr + env_cls(**kwargs) sequence inside _load_env. On exit, modules added inside the guard are removed and modules overwritten inside the guard are restored. The TimeLimit wrap happens AFTER the guard exits; the env object survives because it is a Python reference unaffected by sys.modules cleanup. Multiple manifests in one process now get fresh imports unaffected by prior creators.
+- Phase 1 invariant test: tests/checks/test_rollout_isolation.py::test_load_env_does_not_leak_modules_across_calls explicitly verifies (using a test-only fixture module force-ejected before the call to avoid tautology) that _load_env does not add modules to sys.modules across invocations.
+- Residual: none specific to F-032. Cross-creator sys.modules contamination is closed. The broader importlib sandbox concern (RT-001 F-003) is partially addressed by this same commit; see RT-001 F-003's Resolution subsection for the residual list and Phase 2 path.
 
 ### A-403: Joint manifest-tuple search across all five salts
 
@@ -885,7 +889,7 @@ revisions.
 | F-002 | HIGH (severity revision) | Canonical SEEDED_RANDOM action sequence is fully public per seed; cross-cuts RT-002 F-011, RT-003 F-013, RT-004 F-022. Stays HIGH/DEFERRED; chain-beacon entropy now load-bearing for five salts. | RT-001 A-003, A-303, A-202, A-107 |
 | F-003 | CRITICAL (severity revision) | importlib(entry_point) runs creator-controlled top-level code without sandbox; cross-cuts RT-003 F-019 (16x) and RT-004 F-029 (22x). Escalated from HIGH to CRITICAL; interim sys.modules-snapshot mitigation feasible in Phase 1, full subprocess isolation Phase 2. | RT-001 A-006, A-208, A-310 |
 | F-031 | CRITICAL | A single env can pass every check while lying off-canonical by composing F-002, F-013, F-022 with band-side and bound-side findings; cross-cutting compositional attack. | A-401 |
-| F-032 | CRITICAL | Cross-check sys.modules monkey-patch persistence: first _load_env can mutate sys.modules permanently, contaminating every subsequent check on every subsequent manifest in the same process. | A-402 |
+| F-032 | CRITICAL | Cross-check sys.modules monkey-patch persistence: first _load_env can mutate sys.modules permanently, contaminating every subsequent check on every subsequent manifest in the same process. [CLOSED in commit 56b9b28] | A-402 |
 | F-033 | HIGH | Joint manifest-tuple search across all five salts is linear in the number of salts (not multiplicative); cross-cutting brute-force cost analysis for the F-002 deferred class. | A-403 |
 | F-034 | HIGH | Cumulative DOS against validator pool capacity: adversarially-slow env amortises latency across 58-82 _load_env calls per manifest with no per-check wall-clock cap. | A-404 |
 | F-035 | HIGH | Module-level state survives across check invocations; CPython sys.modules cache lets envs build a state machine spanning all four checks per manifest. | A-405 |
