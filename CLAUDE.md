@@ -83,11 +83,11 @@ Key conventions:
 
 ## Phase 1 status
 
-9 of 11 steps complete. 244 tests, CI green on push and PR.
+10 of 11 steps complete. 300 tests, CI green on push and PR.
 
-Closed: scaffold; protocol; one reference env (gridworld); four validator checks (determinism with self-consistency, reward bounds, reset correctness, solver baseline); pluggable solver registry; consolidated post-step-8 red-team Stage 1 (RT-001 through RT-005, 38 attacks catalogued, 40 findings, 5 CRITICAL); Phase 1 triage fix-pass closing F-021 (commit 7ec7c29), F-023 (commit 0fc4eb5), F-032 (commit 56b9b28), and partially closing F-003 (commit 56b9b28); validator pipeline orchestration with run-all + cheapest-first + attestation-shaped report (commit ae5501b, closes RT-005 F-040 by-design via conjunctive aggregation).
+Closed: scaffold; protocol; one reference env (gridworld); four validator checks (determinism with self-consistency, reward bounds, reset correctness, solver baseline); pluggable solver registry; consolidated post-step-8 red-team Stage 1 (RT-001 through RT-005, 38 attacks catalogued, 40 findings, 5 CRITICAL); Phase 1 triage fix-pass closing F-021 (commit 7ec7c29), F-023 (commit 0fc4eb5), F-032 (commit 56b9b28), and partially closing F-003 (commit 56b9b28); validator pipeline orchestration with run-all + cheapest-first + attestation-shaped report (commit ae5501b, closes RT-005 F-040 by-design via conjunctive aggregation); bond ledger Protocol mirroring bactensor/collateral-contracts plus InMemoryBondLedger reference impl plus ValidatorReport adapter (commit 9c0b239, hypothesis-tested conservation law on the implemented subset; reclaim path raises ReclaimNotSupported as Phase 2 work).
 
-Remaining: bonded-submission shim; end-to-end demo. Plus a Stage 2 PoC pass at the end of Phase 1.
+Remaining: end-to-end demo. Plus a Stage 2 PoC pass at the end of Phase 1.
 
 ## Known limitations carrying forward
 
